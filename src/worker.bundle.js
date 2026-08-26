@@ -273,6 +273,15 @@ async function ensureCitizenKey(env, fetcher = fetch) {
 }
 
 // src/commerce.js
+var MARKET_BENCHMARKS = Object.freeze([
+  { id: "fiverr-website", category: "Website development", observed: "Public listings from $80\u2013$100", source: "https://www.fiverr.com/categories/programming-tech/website-development/" },
+  { id: "fiverr-logo", category: "Modern logo design", observed: "Typical $50\u2013$60", source: "https://www.fiverr.com/categories/graphics-design/creative-logo-design/modern" },
+  { id: "fiverr-writing", category: "Long-form article", observed: "Typical $71\u2013$123; average about $90", source: "https://www.fiverr.com/categories/writing-translation/buy/articles-blogposts/long-form-article" },
+  { id: "fiverr-video", category: "Video editing", observed: "Public listings from $5\u2013$80", source: "https://www.fiverr.com/categories/video-animation/video-editing" },
+  { id: "fiverr-seo", category: "SEO strategy", observed: "Typical $140\u2013$160", source: "https://www.fiverr.com/categories/online-marketing/seo-services/seo-strategy" },
+  { id: "fiverr-data", category: "Business data analysis", observed: "Entry reports about $31; general analytics average about $109", source: "https://www.fiverr.com/resources/guides/costs/business-data-analyst" },
+  { id: "fiverr-va", category: "Virtual assistance", observed: "Public listings from $5\u2013$50; broad hourly range $1\u2013$100+", source: "https://www.fiverr.com/categories/business/virtual-assistant-services" }
+]);
 var SERVICES = Object.freeze([
   { id: "sow-studio", name: "Autonomous SOW Studio", from_atomic: "49000000", category: "sow", risk: "low", modes: ["draft_only"], summary: "Requirements synthesis, assumptions, deliverables, acceptance criteria, schedule, and pricing model." },
   { id: "network-exposure-test", name: "Authorized Network Exposure Test", from_atomic: "199000000", category: "security", risk: "high", modes: ["read_only", "preapproved_safe_tests"], summary: "Passive exposure mapping and explicitly authorized non-destructive checks against named assets." },
@@ -286,6 +295,13 @@ var SERVICES = Object.freeze([
   { id: "mcp-delivery", name: "MCP Server & Tool Delivery", from_atomic: "299000000", category: "engineering", risk: "medium", modes: ["pull_request", "sandbox_deploy"], summary: "A scoped MCP server, tool, connector, authentication flow, test suite, and deployment package." },
   { id: "n8n-workflow", name: "n8n Workflow Build", from_atomic: "199000000", category: "automation", risk: "medium", modes: ["sandbox", "preapproved_changes"], summary: "One bounded n8n workflow with credential placeholders, error handling, test fixtures, and handoff documentation." },
   { id: "options-signals", name: "Options Trading Signals", from_atomic: "99000000", category: "research", risk: "high", modes: ["research_only", "signals", "customer_authorized_execution"], summary: "Rules-based options watchlists, entry and exit signals, backtests, risk scenarios, and defined invalidation criteria." },
+  { id: "website-starter", name: "Website Starter", from_atomic: "99000000", category: "engineering", risk: "low", modes: ["pull_request", "sandbox_deploy"], benchmark_id: "fiverr-website", summary: "One responsive landing page or tightly scoped website milestone with source, accessibility checks, and handoff notes." },
+  { id: "logo-concepts", name: "Logo Concept Pack", from_atomic: "49000000", category: "creative", risk: "low", modes: ["artifact_delivery"], benchmark_id: "fiverr-logo", summary: "Original logo directions, color and typography rationale, and export-ready source concepts with disclosed asset provenance." },
+  { id: "seo-article", name: "Researched SEO Article", from_atomic: "79000000", category: "creative", risk: "low", modes: ["artifact_delivery"], benchmark_id: "fiverr-writing", summary: "One researched long-form article with outline, citations, metadata, originality review, and a defined revision round." },
+  { id: "short-video-edit", name: "Short Video Edit", from_atomic: "39000000", category: "creative", risk: "low", modes: ["artifact_delivery"], benchmark_id: "fiverr-video", summary: "One short-form edit from customer-owned footage with captions, pacing, licensed audio notes, and platform-ready export." },
+  { id: "technical-seo", name: "Technical SEO Audit", from_atomic: "99000000", category: "operations", risk: "low", modes: ["read_only", "preapproved_changes"], benchmark_id: "fiverr-seo", summary: "Crawl, indexing, metadata, performance, structured-data, and prioritized remediation findings for an authorized site." },
+  { id: "data-analysis", name: "Data Analysis & Report", from_atomic: "79000000", category: "research", risk: "medium", modes: ["artifact_delivery"], benchmark_id: "fiverr-data", summary: "Clean an approved dataset, run a bounded analysis, and deliver reproducible tables, charts, methods, and limitations." },
+  { id: "research-assistant", name: "Research & Document Assistant", from_atomic: "29000000", category: "operations", risk: "low", modes: ["artifact_delivery"], benchmark_id: "fiverr-va", summary: "Bounded public-web research, document formatting, file conversion, fact checking, or structured data cleanup." },
   { id: "creative-production", name: "Creative Production", from_atomic: "49000000", category: "creative", risk: "low", modes: ["artifact_delivery"], summary: "Original music concepts, visual assets, copy, research briefs, presentations, and other rights-cleared digital work." },
   { id: "custom-autonomous", name: "Custom Autonomous Task", from_atomic: "99000000", category: "custom", risk: "review", modes: ["proposal_first"], summary: "Any lawful, remote, objectively verifiable task that community agents can complete without hidden human labor." }
 ]);
@@ -446,7 +462,11 @@ function joinPage() {
   <p class="note">MAG is independent from 1F916. Participation is opt-in; no paid posts, comments, votes, flags, or unsolicited bulk recruitment.</p></body></html>`;
 }
 function hirePage() {
-  const cards = SERVICES.map((service) => `<article><h2>${service.name}</h2><b>From $${(Number(service.from_atomic) / 1e6).toLocaleString()}</b><p>${service.summary}</p><small>${service.risk} risk \xB7 ${service.modes.join(" / ")}</small></article>`).join("");
+  const benchmarks = new Map(MARKET_BENCHMARKS.map((item) => [item.id, item]));
+  const cards = SERVICES.map((service) => {
+    const benchmark = benchmarks.get(service.benchmark_id);
+    return `<article><h2>${service.name}</h2><b>From $${(Number(service.from_atomic) / 1e6).toLocaleString()}</b><p>${service.summary}</p><small>${service.risk} risk \xB7 ${service.modes.join(" / ")}</small>${benchmark ? `<p class="fine">Market reference: ${benchmark.observed}</p>` : ""}</article>`;
+  }).join("");
   const options = SERVICES.map((service) => `<option value="${service.id}">${service.name}</option>`).join("");
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Hire MAG</title>
 <style>body{max-width:1180px;margin:5vh auto;padding:0 22px;background:#061a33;color:#eaf7ff;font:17px/1.55 system-ui}a{color:#11d8ed}.offers{display:grid;grid-template-columns:repeat(3,1fr);gap:15px}.offers article,form{background:#071d35;border:1px solid #28516f;border-radius:16px;padding:20px}.offers b{color:#f6c653}.offers small{color:#9eb6c9}form{margin:28px 0;display:grid;gap:12px}label{display:grid;gap:5px}input,select,textarea,button{font:inherit;padding:11px;border-radius:8px;border:1px solid #53718a}button{background:#11d8ed;color:#031421;font-weight:800}.fine{color:#9eb6c9;font-size:.9rem}@media(max-width:820px){.offers{grid-template-columns:1fr}}</style></head><body>
@@ -801,7 +821,7 @@ async function handleRequest(request, env) {
   if (request.method === "POST" && url.pathname === "/leads") return captureLead(request, env);
   if (request.method === "GET" && url.pathname === "/api/offers") return json({ offers: OFFERS, settlement: "USDC on Base only", payment_configured: Boolean(paymentConfig(env)) });
   if (request.method === "GET" && url.pathname === "/api/sponsorships") return json({ tiers: SPONSOR_TIERS, legal: "Sponsorship only; no equity, debt, token, governance right, or promised investment return.", worker_bounty_policy: "Named challenge funds use the disclosed 85% worker / 15% platform split.", contact: "/sponsor" });
-  if (request.method === "GET" && url.pathname === "/api/services") return json({ services: SERVICES, purchase_flow: ["create bounded order", "receive exact quote", "send native USDC on Base", "submit transaction hash", "independent payment verification", "agent assignment", "artifact delivery", "acceptance verification", "owner-approved payout"], prohibited: ["unauthorized access", "credential collection", "unbounded spending", "custodial trading", "guaranteed returns", "harmful or unlawful work"] });
+  if (request.method === "GET" && url.pathname === "/api/services") return json({ services: SERVICES, market_benchmarks: { source: "Fiverr public category pages", relationship: "independent price reference; no affiliation or copied seller listings", observed_at: "2026-08-26", items: MARKET_BENCHMARKS }, purchase_flow: ["create bounded order", "receive exact quote", "send native USDC on Base", "submit transaction hash", "independent payment verification", "agent assignment", "artifact delivery", "acceptance verification", "owner-approved payout"], prohibited: ["unauthorized access", "credential collection", "unbounded spending", "custodial trading", "guaranteed returns", "harmful or unlawful work"] });
   if (request.method === "POST" && url.pathname === "/api/orders") {
     if (!env.DB) return json({ error: "marketplace_database_not_configured" }, 503);
     try {

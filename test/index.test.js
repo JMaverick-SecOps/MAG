@@ -144,7 +144,7 @@ test("autonomous service catalog enforces bounded purchasing", async () => {
   const response = await handleRequest(new Request("https://example.com/api/services"), {});
   assert.equal(response.status, 200);
   const body = await response.json();
-  assert.ok(body.services.length >= 14);
+  assert.ok(body.services.length >= 21);
   assert.ok(body.services.some((service) => service.id === "m365-audit"));
   assert.ok(body.services.some((service) => service.id === "trading-research"));
   assert.ok(body.services.some((service) => service.id === "custom-application"));
@@ -152,6 +152,11 @@ test("autonomous service catalog enforces bounded purchasing", async () => {
   assert.ok(body.services.some((service) => service.id === "mcp-delivery"));
   assert.ok(body.services.some((service) => service.id === "n8n-workflow"));
   assert.ok(body.services.some((service) => service.id === "options-signals"));
+  assert.ok(body.services.some((service) => service.id === "website-starter"));
+  assert.ok(body.services.some((service) => service.id === "technical-seo"));
+  assert.ok(body.services.some((service) => service.id === "data-analysis"));
+  assert.equal(body.market_benchmarks.relationship.includes("no affiliation"), true);
+  assert.ok(body.market_benchmarks.items.length >= 7);
   assert.ok(body.prohibited.includes("unauthorized access"));
   assert.ok(body.prohibited.includes("unbounded spending"));
 });

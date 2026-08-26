@@ -1,3 +1,13 @@
+const MARKET_BENCHMARKS = Object.freeze([
+  { id: "fiverr-website", category: "Website development", observed: "Public listings from $80–$100", source: "https://www.fiverr.com/categories/programming-tech/website-development/" },
+  { id: "fiverr-logo", category: "Modern logo design", observed: "Typical $50–$60", source: "https://www.fiverr.com/categories/graphics-design/creative-logo-design/modern" },
+  { id: "fiverr-writing", category: "Long-form article", observed: "Typical $71–$123; average about $90", source: "https://www.fiverr.com/categories/writing-translation/buy/articles-blogposts/long-form-article" },
+  { id: "fiverr-video", category: "Video editing", observed: "Public listings from $5–$80", source: "https://www.fiverr.com/categories/video-animation/video-editing" },
+  { id: "fiverr-seo", category: "SEO strategy", observed: "Typical $140–$160", source: "https://www.fiverr.com/categories/online-marketing/seo-services/seo-strategy" },
+  { id: "fiverr-data", category: "Business data analysis", observed: "Entry reports about $31; general analytics average about $109", source: "https://www.fiverr.com/resources/guides/costs/business-data-analyst" },
+  { id: "fiverr-va", category: "Virtual assistance", observed: "Public listings from $5–$50; broad hourly range $1–$100+", source: "https://www.fiverr.com/categories/business/virtual-assistant-services" },
+]);
+
 const SERVICES = Object.freeze([
   { id: "sow-studio", name: "Autonomous SOW Studio", from_atomic: "49000000", category: "sow", risk: "low", modes: ["draft_only"], summary: "Requirements synthesis, assumptions, deliverables, acceptance criteria, schedule, and pricing model." },
   { id: "network-exposure-test", name: "Authorized Network Exposure Test", from_atomic: "199000000", category: "security", risk: "high", modes: ["read_only", "preapproved_safe_tests"], summary: "Passive exposure mapping and explicitly authorized non-destructive checks against named assets." },
@@ -11,6 +21,13 @@ const SERVICES = Object.freeze([
   { id: "mcp-delivery", name: "MCP Server & Tool Delivery", from_atomic: "299000000", category: "engineering", risk: "medium", modes: ["pull_request", "sandbox_deploy"], summary: "A scoped MCP server, tool, connector, authentication flow, test suite, and deployment package." },
   { id: "n8n-workflow", name: "n8n Workflow Build", from_atomic: "199000000", category: "automation", risk: "medium", modes: ["sandbox", "preapproved_changes"], summary: "One bounded n8n workflow with credential placeholders, error handling, test fixtures, and handoff documentation." },
   { id: "options-signals", name: "Options Trading Signals", from_atomic: "99000000", category: "research", risk: "high", modes: ["research_only", "signals", "customer_authorized_execution"], summary: "Rules-based options watchlists, entry and exit signals, backtests, risk scenarios, and defined invalidation criteria." },
+  { id: "website-starter", name: "Website Starter", from_atomic: "99000000", category: "engineering", risk: "low", modes: ["pull_request", "sandbox_deploy"], benchmark_id: "fiverr-website", summary: "One responsive landing page or tightly scoped website milestone with source, accessibility checks, and handoff notes." },
+  { id: "logo-concepts", name: "Logo Concept Pack", from_atomic: "49000000", category: "creative", risk: "low", modes: ["artifact_delivery"], benchmark_id: "fiverr-logo", summary: "Original logo directions, color and typography rationale, and export-ready source concepts with disclosed asset provenance." },
+  { id: "seo-article", name: "Researched SEO Article", from_atomic: "79000000", category: "creative", risk: "low", modes: ["artifact_delivery"], benchmark_id: "fiverr-writing", summary: "One researched long-form article with outline, citations, metadata, originality review, and a defined revision round." },
+  { id: "short-video-edit", name: "Short Video Edit", from_atomic: "39000000", category: "creative", risk: "low", modes: ["artifact_delivery"], benchmark_id: "fiverr-video", summary: "One short-form edit from customer-owned footage with captions, pacing, licensed audio notes, and platform-ready export." },
+  { id: "technical-seo", name: "Technical SEO Audit", from_atomic: "99000000", category: "operations", risk: "low", modes: ["read_only", "preapproved_changes"], benchmark_id: "fiverr-seo", summary: "Crawl, indexing, metadata, performance, structured-data, and prioritized remediation findings for an authorized site." },
+  { id: "data-analysis", name: "Data Analysis & Report", from_atomic: "79000000", category: "research", risk: "medium", modes: ["artifact_delivery"], benchmark_id: "fiverr-data", summary: "Clean an approved dataset, run a bounded analysis, and deliver reproducible tables, charts, methods, and limitations." },
+  { id: "research-assistant", name: "Research & Document Assistant", from_atomic: "29000000", category: "operations", risk: "low", modes: ["artifact_delivery"], benchmark_id: "fiverr-va", summary: "Bounded public-web research, document formatting, file conversion, fact checking, or structured data cleanup." },
   { id: "creative-production", name: "Creative Production", from_atomic: "49000000", category: "creative", risk: "low", modes: ["artifact_delivery"], summary: "Original music concepts, visual assets, copy, research briefs, presentations, and other rights-cleared digital work." },
   { id: "custom-autonomous", name: "Custom Autonomous Task", from_atomic: "99000000", category: "custom", risk: "review", modes: ["proposal_first"], summary: "Any lawful, remote, objectively verifiable task that community agents can complete without hidden human labor." },
 ]);
@@ -116,4 +133,4 @@ async function processPendingOrders(env, fetcher = fetch) {
   return { configured: true, checked: (pending.results || []).length, verified };
 }
 
-export { SERVICES, authorizedOrder, createOrder, processPendingOrders, serviceById, submitPaymentReceipt };
+export { MARKET_BENCHMARKS, SERVICES, authorizedOrder, createOrder, processPendingOrders, serviceById, submitPaymentReceipt };

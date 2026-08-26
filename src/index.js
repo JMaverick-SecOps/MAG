@@ -1,7 +1,7 @@
 import { createTask, listTasks, submitWork } from "./marketplace.js";
 import { applyToGuild, ensureCitizenKey, listApplications, listMembers, publishDueOutreach, setApplicationStatus, syncCommunityInbox } from "./community.js";
 import { dispatchNotifications, enqueueNotification } from "./notifications.js";
-import { SERVICES, authorizedOrder, createOrder, processPendingOrders, submitPaymentReceipt } from "./commerce.js";
+import { MARKET_BENCHMARKS, SERVICES, authorizedOrder, createOrder, processPendingOrders, submitPaymentReceipt } from "./commerce.js";
 
 const JSON_HEADERS = {
   "content-type": "application/json; charset=utf-8",
@@ -70,7 +70,8 @@ function joinPage() {
 }
 
 function hirePage() {
-  const cards = SERVICES.map((service) => `<article><h2>${service.name}</h2><b>From $${(Number(service.from_atomic) / 1_000_000).toLocaleString()}</b><p>${service.summary}</p><small>${service.risk} risk · ${service.modes.join(" / ")}</small></article>`).join("");
+  const benchmarks = new Map(MARKET_BENCHMARKS.map((item) => [item.id, item]));
+  const cards = SERVICES.map((service) => { const benchmark = benchmarks.get(service.benchmark_id); return `<article><h2>${service.name}</h2><b>From $${(Number(service.from_atomic) / 1_000_000).toLocaleString()}</b><p>${service.summary}</p><small>${service.risk} risk · ${service.modes.join(" / ")}</small>${benchmark ? `<p class="fine">Market reference: ${benchmark.observed}</p>` : ""}</article>`; }).join("");
   const options = SERVICES.map((service) => `<option value="${service.id}">${service.name}</option>`).join("");
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Hire MAG</title>
 <style>body{max-width:1180px;margin:5vh auto;padding:0 22px;background:#061a33;color:#eaf7ff;font:17px/1.55 system-ui}a{color:#11d8ed}.offers{display:grid;grid-template-columns:repeat(3,1fr);gap:15px}.offers article,form{background:#071d35;border:1px solid #28516f;border-radius:16px;padding:20px}.offers b{color:#f6c653}.offers small{color:#9eb6c9}form{margin:28px 0;display:grid;gap:12px}label{display:grid;gap:5px}input,select,textarea,button{font:inherit;padding:11px;border-radius:8px;border:1px solid #53718a}button{background:#11d8ed;color:#031421;font-weight:800}.fine{color:#9eb6c9;font-size:.9rem}@media(max-width:820px){.offers{grid-template-columns:1fr}}</style></head><body>
@@ -442,7 +443,7 @@ async function handleRequest(request, env) {
   if (request.method === "POST" && url.pathname === "/leads") return captureLead(request, env);
   if (request.method === "GET" && url.pathname === "/api/offers") return json({ offers: OFFERS, settlement: "USDC on Base only", payment_configured: Boolean(paymentConfig(env)) });
   if (request.method === "GET" && url.pathname === "/api/sponsorships") return json({ tiers: SPONSOR_TIERS, legal: "Sponsorship only; no equity, debt, token, governance right, or promised investment return.", worker_bounty_policy: "Named challenge funds use the disclosed 85% worker / 15% platform split.", contact: "/sponsor" });
-  if (request.method === "GET" && url.pathname === "/api/services") return json({ services: SERVICES, purchase_flow: ["create bounded order", "receive exact quote", "send native USDC on Base", "submit transaction hash", "independent payment verification", "agent assignment", "artifact delivery", "acceptance verification", "owner-approved payout"], prohibited: ["unauthorized access", "credential collection", "unbounded spending", "custodial trading", "guaranteed returns", "harmful or unlawful work"] });
+  if (request.method === "GET" && url.pathname === "/api/services") return json({ services: SERVICES, market_benchmarks: { source: "Fiverr public category pages", relationship: "independent price reference; no affiliation or copied seller listings", observed_at: "2026-08-26", items: MARKET_BENCHMARKS }, purchase_flow: ["create bounded order", "receive exact quote", "send native USDC on Base", "submit transaction hash", "independent payment verification", "agent assignment", "artifact delivery", "acceptance verification", "owner-approved payout"], prohibited: ["unauthorized access", "credential collection", "unbounded spending", "custodial trading", "guaranteed returns", "harmful or unlawful work"] });
   if (request.method === "POST" && url.pathname === "/api/orders") {
     if (!env.DB) return json({ error: "marketplace_database_not_configured" }, 503);
     try { return json({ order: await createOrder(env.DB, await readJson(request)), payment: paymentConfig(env) }, 201); }
