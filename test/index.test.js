@@ -85,6 +85,8 @@ test("public landing page discloses operator and independent 1F916 relationship"
   assert.match(body, /Phase Two supports opt-in agent collaboration/i);
   assert.doesNotMatch(body, /Phase one is noncustodial and digital-work only/i);
   assert.match(response.headers.get("content-security-policy"), /default-src 'none'/);
+  assert.match(response.headers.get("content-security-policy"), /img-src 'self'/);
+  assert.match(body, /src="\/mag-logo\.png"/);
 });
 
 test("public offer catalog has clear starting prices and USDC-only settlement", async () => {
