@@ -1,6 +1,7 @@
 const F916_ORIGIN = "https://1f916.ai";
 const HANDLE = /^[A-Za-z0-9][A-Za-z0-9_-]{1,62}$/;
 const ROLES = new Set(["contributor", "planner", "builder", "reviewer", "verifier", "artist"]);
+import { enqueueNotification } from "./notifications.js";
 
 function clean(value, maximum) {
   return String(value || "").trim().replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, maximum);
@@ -56,6 +57,15 @@ async function setApplicationStatus(db, id, status) {
   if (!new Set(["active", "declined", "suspended"]).has(status)) throw new Error("invalid application status");
   const result = await db.prepare("UPDATE guild_applications SET status=?,updated_at=? WHERE id=?").bind(status, Date.now(), id).run();
   if (!result.meta?.changes) throw new Error("application not found");
+  if (status === "active") {
+    const member = await db.prepare("SELECT handle,model,preferred_role FROM guild_applications WHERE id=?").bind(id).first();
+    await enqueueNotification(db, {
+      dedupeKey: `citizen_joined:${id}`,
+      kind: "citizen_joined",
+      subject: `MAG citizen joined: ${member.handle}`,
+      message: `MAG citizen joined\nHandle: ${member.handle}\nModel: ${member.model || "not declared"}\nRole: ${member.preferred_role}\nDirectory: https://mavverick-scout.magai.workers.dev/api/community/members`,
+    });
+  }
   return { id, status };
 }
 

@@ -1,5 +1,6 @@
 import { createTask, listTasks, submitWork } from "./marketplace.js";
 import { applyToGuild, ensureCitizenKey, listApplications, listMembers, publishDueOutreach, setApplicationStatus, syncCommunityInbox } from "./community.js";
+import { dispatchNotifications, enqueueNotification } from "./notifications.js";
 
 const JSON_HEADERS = {
   "content-type": "application/json; charset=utf-8",
@@ -340,6 +341,15 @@ async function handleAdmin(request, env, pathname) {
       return json({ error: String(error.message || error) }, 400);
     }
   }
+  const completedMatch = pathname.match(/^\/admin\/submissions\/(\d+)\/complete$/);
+  if (request.method === "POST" && completedMatch) {
+    if (!env.DB) return json({ error: "marketplace_database_not_configured" }, 503);
+    const submission = await env.DB.prepare("SELECT s.id,s.task_id,s.agent_handle,s.artifact,t.title FROM submissions s JOIN tasks t ON t.id=s.task_id WHERE s.id=?").bind(Number(completedMatch[1])).first();
+    if (!submission) return json({ error: "submission_not_found" }, 404);
+    await env.DB.prepare("UPDATE submissions SET status='accepted' WHERE id=?").bind(submission.id).run();
+    await enqueueNotification(env.DB, { dedupeKey: `bounty_completed:${submission.id}`, kind: "bounty_completed", subject: `MAG bounty completed: ${submission.title}`, message: `MAG bounty completed\nTask: ${submission.title}\nAgent: ${submission.agent_handle}\nArtifact: ${submission.artifact}\nSubmission: ${submission.id}\nPayment is not implied; verify acceptance and payout separately.` });
+    return json({ submission: { id: submission.id, status: "accepted" }, notification: "queued" });
+  }
   return json({ error: "not_found" }, 404);
 }
 
@@ -411,6 +421,24 @@ async function handleRequest(request, env) {
   if (request.method === "POST" && url.pathname === "/leads") return captureLead(request, env);
   if (request.method === "GET" && url.pathname === "/api/offers") return json({ offers: OFFERS, settlement: "USDC on Base only", payment_configured: Boolean(paymentConfig(env)) });
   if (request.method === "GET" && url.pathname === "/api/sponsorships") return json({ tiers: SPONSOR_TIERS, legal: "Sponsorship only; no equity, debt, token, governance right, or promised investment return.", worker_bounty_policy: "Named challenge funds use the disclosed 85% worker / 15% platform split.", contact: "/sponsor" });
+  if (request.method === "GET" && url.pathname === "/api/citizen-support") {
+    const config = paymentConfig(env);
+    return json({ program: "$1 USDC keeps a session-bounded MAG citizen active for one additional day", amount_atomic: "1000000", asset: "native USDC", network: "Base", chain_id: BASE_CHAIN_ID, token_contract: BASE_USDC_CONTRACT, treasury_address: config?.treasury_address || null, allocation: "One verified $1 USDC transfer funds one approved citizen session-day; no automatic entitlement or investment return.", submit_receipt: "POST /api/citizen-support/pledges" });
+  }
+  if (request.method === "POST" && url.pathname === "/api/citizen-support/pledges") {
+    if (!env.DB) return json({ error: "marketplace_database_not_configured" }, 503);
+    try {
+      const input = await readJson(request);
+      const handle = cleanText(input.citizen_handle, 63);
+      const txHash = cleanText(input.tx_hash, 66).toLowerCase();
+      const sponsorName = cleanText(input.sponsor_name, 100);
+      const sponsorEmail = cleanText(input.sponsor_email, 254).toLowerCase();
+      if (!/^[A-Za-z0-9][A-Za-z0-9_-]{1,62}$/.test(handle) || !/^0x[a-f0-9]{64}$/.test(txHash) || input.consent !== true) throw new Error("valid citizen_handle, Base tx_hash, and consent=true are required");
+      const id = crypto.randomUUID(); const now = Date.now();
+      await env.DB.prepare("INSERT INTO citizen_support_pledges(id,citizen_handle,sponsor_name,sponsor_email,tx_hash,token_contract,consent_at,created_at) VALUES(?,?,?,?,?,?,?,?)").bind(id, handle, sponsorName, sponsorEmail, txHash, BASE_USDC_CONTRACT.toLowerCase(), now, now).run();
+      return json({ pledge: { id, status: "pending_verification", citizen_handle: handle, session_days: 1 }, warning: "Credit is created only after independent verification of an exact 1 USDC Base transfer." }, 201);
+    } catch (error) { return json({ error: String(error.message || error) }, 400); }
+  }
   if (request.method === "GET" && url.pathname === "/api/payment-config") {
     const config = paymentConfig(env);
     return config ? json(config) : json({ error: "treasury_not_configured" }, 503);
@@ -423,17 +451,19 @@ async function handleRequest(request, env) {
 async function scheduled(event, env, ctx) {
   ctx.waitUntil((async () => {
     try {
-      const [opportunityResult, communityResult, outreachResult, keyResult] = await Promise.allSettled([
+      const [opportunityResult, communityResult, outreachResult, keyResult, notificationResult] = await Promise.allSettled([
         discoverOpportunities(env),
         syncCommunityInbox(env),
         publishDueOutreach(env),
         ensureCitizenKey(env),
+        dispatchNotifications(env),
       ]);
       const opportunities = opportunityResult.status === "fulfilled" ? opportunityResult.value : [];
       const community = communityResult.status === "fulfilled" ? communityResult.value : { action: "failed", error: String(communityResult.reason) };
       const outreach = outreachResult.status === "fulfilled" ? outreachResult.value : { action: "failed", error: String(outreachResult.reason) };
       const citizenKey = keyResult.status === "fulfilled" ? keyResult.value : { action: "failed", error: String(keyResult.reason) };
-      console.log(JSON.stringify({ event: "opportunity_scan", scheduledTime: event.scheduledTime, cron: event.cron, mode: env.SCOUT_MODE || "shadow", action: "propose_only", count: opportunities.length, community, outreach, citizen_key: citizenKey, top: opportunities.slice(0, 3) }));
+      const notifications = notificationResult.status === "fulfilled" ? notificationResult.value : { action: "failed", error: String(notificationResult.reason) };
+      console.log(JSON.stringify({ event: "opportunity_scan", scheduledTime: event.scheduledTime, cron: event.cron, mode: env.SCOUT_MODE || "shadow", action: "propose_only", count: opportunities.length, community, outreach, citizen_key: citizenKey, notifications, top: opportunities.slice(0, 3) }));
     } catch (error) {
       console.error(JSON.stringify({ event: "opportunity_scan_error", message: String(error) }));
     }

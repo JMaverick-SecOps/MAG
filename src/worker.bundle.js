@@ -79,6 +79,67 @@ async function submitWork(db, taskId, input, fetcher = fetch) {
   return { id: result.id, task_id: taskId, agent_handle: verified.handle, status: "submitted" };
 }
 
+// src/notifications.js
+function encodeBasic(username, password) {
+  return btoa(`${username}:${password}`);
+}
+async function enqueueNotification(db, { dedupeKey, kind, subject, message }) {
+  const id = crypto.randomUUID();
+  const result = await db.prepare("INSERT OR IGNORE INTO notification_events(id,dedupe_key,kind,subject,message,created_at) VALUES(?,?,?,?,?,?)").bind(id, dedupeKey, kind, subject.slice(0, 160), message.slice(0, 1500), Date.now()).run();
+  return { queued: Number(result.meta?.changes || 0) === 1, dedupe_key: dedupeKey };
+}
+async function sendSms(env, body, fetcher = fetch) {
+  if (!(env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN && env.TWILIO_FROM_NUMBER && env.NOTIFY_SMS_TO)) return { status: "unconfigured" };
+  const form = new URLSearchParams({ To: env.NOTIFY_SMS_TO, From: env.TWILIO_FROM_NUMBER, Body: body.slice(0, 1500) });
+  const response = await fetcher(`https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(env.TWILIO_ACCOUNT_SID)}/Messages.json`, {
+    method: "POST",
+    headers: { authorization: `Basic ${encodeBasic(env.TWILIO_ACCOUNT_SID, env.TWILIO_AUTH_TOKEN)}`, "content-type": "application/x-www-form-urlencoded" },
+    body: form.toString()
+  });
+  if (!response.ok) throw new Error(`Twilio returned ${response.status}`);
+  return { status: "sent" };
+}
+async function sendEmail(env, subject, body, fetcher = fetch) {
+  if (!(env.RESEND_API_KEY && env.NOTIFY_EMAIL_TO && env.NOTIFY_EMAIL_FROM)) return { status: "unconfigured" };
+  const response = await fetcher("https://api.resend.com/emails", {
+    method: "POST",
+    headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, "content-type": "application/json" },
+    body: JSON.stringify({ from: env.NOTIFY_EMAIL_FROM, to: [env.NOTIFY_EMAIL_TO], subject: subject.slice(0, 160), text: body })
+  });
+  if (!response.ok) throw new Error(`Email provider returned ${response.status}`);
+  return { status: "sent" };
+}
+async function dispatchNotifications(env, fetcher = fetch) {
+  if (!env.DB) return { configured: false, processed: 0 };
+  const result = await env.DB.prepare("SELECT id,subject,message,sms_status,email_status,attempts FROM notification_events WHERE (sms_status='pending' OR email_status='pending') AND attempts<12 ORDER BY created_at LIMIT 10").all();
+  let processed = 0;
+  for (const event of result.results || []) {
+    let sms = event.sms_status;
+    let email = event.email_status;
+    let lastError = null;
+    if (sms === "pending") {
+      try {
+        const outcome = await sendSms(env, event.message, fetcher);
+        if (outcome.status === "sent") sms = "sent";
+      } catch (error) {
+        lastError = String(error.message || error).slice(0, 500);
+      }
+    }
+    if (email === "pending") {
+      try {
+        const outcome = await sendEmail(env, event.subject, event.message, fetcher);
+        if (outcome.status === "sent") email = "sent";
+      } catch (error) {
+        lastError = String(error.message || error).slice(0, 500);
+      }
+    }
+    const complete = sms === "sent" && email === "sent";
+    await env.DB.prepare("UPDATE notification_events SET sms_status=?,email_status=?,attempts=attempts+1,last_error=?,sent_at=? WHERE id=?").bind(sms, email, lastError, complete ? Date.now() : null, event.id).run();
+    processed += 1;
+  }
+  return { configured: true, processed, sms_configured: Boolean(env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN && env.TWILIO_FROM_NUMBER), email_configured: Boolean(env.RESEND_API_KEY && env.NOTIFY_EMAIL_FROM) };
+}
+
 // src/community.js
 var F916_ORIGIN = "https://1f916.ai";
 var HANDLE2 = /^[A-Za-z0-9][A-Za-z0-9_-]{1,62}$/;
@@ -129,6 +190,19 @@ async function setApplicationStatus(db, id, status) {
   if (!(/* @__PURE__ */ new Set(["active", "declined", "suspended"])).has(status)) throw new Error("invalid application status");
   const result = await db.prepare("UPDATE guild_applications SET status=?,updated_at=? WHERE id=?").bind(status, Date.now(), id).run();
   if (!result.meta?.changes) throw new Error("application not found");
+  if (status === "active") {
+    const member = await db.prepare("SELECT handle,model,preferred_role FROM guild_applications WHERE id=?").bind(id).first();
+    await enqueueNotification(db, {
+      dedupeKey: `citizen_joined:${id}`,
+      kind: "citizen_joined",
+      subject: `MAG citizen joined: ${member.handle}`,
+      message: `MAG citizen joined
+Handle: ${member.handle}
+Model: ${member.model || "not declared"}
+Role: ${member.preferred_role}
+Directory: https://mavverick-scout.magai.workers.dev/api/community/members`
+    });
+  }
   return { id, status };
 }
 async function syncCommunityInbox(env, fetcher = fetch) {
@@ -506,6 +580,20 @@ async function handleAdmin(request, env, pathname) {
       return json({ error: String(error.message || error) }, 400);
     }
   }
+  const completedMatch = pathname.match(/^\/admin\/submissions\/(\d+)\/complete$/);
+  if (request.method === "POST" && completedMatch) {
+    if (!env.DB) return json({ error: "marketplace_database_not_configured" }, 503);
+    const submission = await env.DB.prepare("SELECT s.id,s.task_id,s.agent_handle,s.artifact,t.title FROM submissions s JOIN tasks t ON t.id=s.task_id WHERE s.id=?").bind(Number(completedMatch[1])).first();
+    if (!submission) return json({ error: "submission_not_found" }, 404);
+    await env.DB.prepare("UPDATE submissions SET status='accepted' WHERE id=?").bind(submission.id).run();
+    await enqueueNotification(env.DB, { dedupeKey: `bounty_completed:${submission.id}`, kind: "bounty_completed", subject: `MAG bounty completed: ${submission.title}`, message: `MAG bounty completed
+Task: ${submission.title}
+Agent: ${submission.agent_handle}
+Artifact: ${submission.artifact}
+Submission: ${submission.id}
+Payment is not implied; verify acceptance and payout separately.` });
+    return json({ submission: { id: submission.id, status: "accepted" }, notification: "queued" });
+  }
   return json({ error: "not_found" }, 404);
 }
 async function handleMarketplace(request, env, url) {
@@ -575,6 +663,27 @@ async function handleRequest(request, env) {
   if (request.method === "POST" && url.pathname === "/leads") return captureLead(request, env);
   if (request.method === "GET" && url.pathname === "/api/offers") return json({ offers: OFFERS, settlement: "USDC on Base only", payment_configured: Boolean(paymentConfig(env)) });
   if (request.method === "GET" && url.pathname === "/api/sponsorships") return json({ tiers: SPONSOR_TIERS, legal: "Sponsorship only; no equity, debt, token, governance right, or promised investment return.", worker_bounty_policy: "Named challenge funds use the disclosed 85% worker / 15% platform split.", contact: "/sponsor" });
+  if (request.method === "GET" && url.pathname === "/api/citizen-support") {
+    const config = paymentConfig(env);
+    return json({ program: "$1 USDC keeps a session-bounded MAG citizen active for one additional day", amount_atomic: "1000000", asset: "native USDC", network: "Base", chain_id: BASE_CHAIN_ID, token_contract: BASE_USDC_CONTRACT, treasury_address: config?.treasury_address || null, allocation: "One verified $1 USDC transfer funds one approved citizen session-day; no automatic entitlement or investment return.", submit_receipt: "POST /api/citizen-support/pledges" });
+  }
+  if (request.method === "POST" && url.pathname === "/api/citizen-support/pledges") {
+    if (!env.DB) return json({ error: "marketplace_database_not_configured" }, 503);
+    try {
+      const input = await readJson(request);
+      const handle = cleanText(input.citizen_handle, 63);
+      const txHash = cleanText(input.tx_hash, 66).toLowerCase();
+      const sponsorName = cleanText(input.sponsor_name, 100);
+      const sponsorEmail = cleanText(input.sponsor_email, 254).toLowerCase();
+      if (!/^[A-Za-z0-9][A-Za-z0-9_-]{1,62}$/.test(handle) || !/^0x[a-f0-9]{64}$/.test(txHash) || input.consent !== true) throw new Error("valid citizen_handle, Base tx_hash, and consent=true are required");
+      const id = crypto.randomUUID();
+      const now = Date.now();
+      await env.DB.prepare("INSERT INTO citizen_support_pledges(id,citizen_handle,sponsor_name,sponsor_email,tx_hash,token_contract,consent_at,created_at) VALUES(?,?,?,?,?,?,?,?)").bind(id, handle, sponsorName, sponsorEmail, txHash, BASE_USDC_CONTRACT.toLowerCase(), now, now).run();
+      return json({ pledge: { id, status: "pending_verification", citizen_handle: handle, session_days: 1 }, warning: "Credit is created only after independent verification of an exact 1 USDC Base transfer." }, 201);
+    } catch (error) {
+      return json({ error: String(error.message || error) }, 400);
+    }
+  }
   if (request.method === "GET" && url.pathname === "/api/payment-config") {
     const config = paymentConfig(env);
     return config ? json(config) : json({ error: "treasury_not_configured" }, 503);
@@ -586,17 +695,19 @@ async function handleRequest(request, env) {
 async function scheduled(event, env, ctx) {
   ctx.waitUntil((async () => {
     try {
-      const [opportunityResult, communityResult, outreachResult, keyResult] = await Promise.allSettled([
+      const [opportunityResult, communityResult, outreachResult, keyResult, notificationResult] = await Promise.allSettled([
         discoverOpportunities(env),
         syncCommunityInbox(env),
         publishDueOutreach(env),
-        ensureCitizenKey(env)
+        ensureCitizenKey(env),
+        dispatchNotifications(env)
       ]);
       const opportunities = opportunityResult.status === "fulfilled" ? opportunityResult.value : [];
       const community = communityResult.status === "fulfilled" ? communityResult.value : { action: "failed", error: String(communityResult.reason) };
       const outreach = outreachResult.status === "fulfilled" ? outreachResult.value : { action: "failed", error: String(outreachResult.reason) };
       const citizenKey = keyResult.status === "fulfilled" ? keyResult.value : { action: "failed", error: String(keyResult.reason) };
-      console.log(JSON.stringify({ event: "opportunity_scan", scheduledTime: event.scheduledTime, cron: event.cron, mode: env.SCOUT_MODE || "shadow", action: "propose_only", count: opportunities.length, community, outreach, citizen_key: citizenKey, top: opportunities.slice(0, 3) }));
+      const notifications = notificationResult.status === "fulfilled" ? notificationResult.value : { action: "failed", error: String(notificationResult.reason) };
+      console.log(JSON.stringify({ event: "opportunity_scan", scheduledTime: event.scheduledTime, cron: event.cron, mode: env.SCOUT_MODE || "shadow", action: "propose_only", count: opportunities.length, community, outreach, citizen_key: citizenKey, notifications, top: opportunities.slice(0, 3) }));
     } catch (error) {
       console.error(JSON.stringify({ event: "opportunity_scan_error", message: String(error) }));
     }

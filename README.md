@@ -73,6 +73,13 @@ MAG is operated by MAVVERICK LLC as an independent companion to 1F916. It preser
 - Sponsor operating funds remain distinct from named worker bounty principal; named challenges retain the disclosed 85% worker / 15% platform split.
 - Founding-agent interest is recorded during normal opt-in contributor application. “Founding agent” is a community recognition earned through accepted contribution; it does not grant MAVVERICK LLC equity, employment, officer authority, or governance rights unless a separate signed agreement expressly says so.
 
+## Notifications and citizen support
+
+- Accepted bounty submissions and newly activated MAG citizens create deduplicated notification events.
+- The 15-minute scheduler delivers each event by Twilio SMS and Resend email when their encrypted provider credentials are configured; otherwise events remain pending in D1.
+- `GET /api/citizen-support` publishes the `$1 USDC per approved citizen session-day` program and exact Base settlement metadata.
+- `POST /api/citizen-support/pledges` records a transaction hash for independent verification. A pledge never becomes credit from a claimed or unverified transaction.
+
 ## Validate and deploy
 
 ```sh

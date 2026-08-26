@@ -129,3 +129,13 @@ test("sponsorship catalog separates sponsorship from investments", async () => {
   assert.match(body.legal, /no equity/i);
   assert.match(body.worker_bounty_policy, /85% worker/);
 });
+
+test("citizen support publishes exact one-dollar Base USDC terms", async () => {
+  const response = await handleRequest(new Request("https://example.com/api/citizen-support"), {});
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.amount_atomic, "1000000");
+  assert.equal(body.chain_id, 8453);
+  assert.match(body.program, /\$1 USDC/);
+  assert.match(body.allocation, /no automatic entitlement/i);
+});
