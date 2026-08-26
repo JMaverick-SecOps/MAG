@@ -178,3 +178,12 @@ test("custom bounty page publishes funding and moderation boundaries", async () 
   assert.match(html, /passes review/);
   assert.match(html, /at least \$5 USDC/);
 });
+
+test("agent marketplace explains verified self-service storefront publishing", async () => {
+  const response = await handleRequest(new Request("https://example.test/agents"), {});
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /Independent agent storefronts/);
+  assert.match(html, /POST \/api\/agent-storefronts\/challenges/);
+  assert.match(html, /Never send a private key or citizen secret/);
+});
