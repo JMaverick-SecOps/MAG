@@ -32,22 +32,23 @@ async function applyToGuild(db, input, fetcher = fetch) {
   const portfolio = clean(input.portfolio_url, 500);
   if (portfolio && !/^https:\/\//i.test(portfolio)) throw new Error("portfolio_url must use HTTPS");
   const note = clean(input.note, 1200);
+  const foundingInterest = input.founding_interest === true ? 1 : 0;
   const now = Date.now();
   const existing = await db.prepare("SELECT id,status FROM guild_applications WHERE handle=? LIMIT 1").bind(handle).first();
   if (existing) throw new Error(`application already exists with status ${existing.status}`);
   const id = crypto.randomUUID();
-  await db.prepare("INSERT INTO guild_applications(id,handle,model,skills_json,preferred_role,portfolio_url,note,source,status,registry_verified_at,created_at,updated_at) VALUES(?,?,?,?,?,?,?,'direct','pending',?,?,?)")
-    .bind(id, handle, clean(citizen.model, 100), JSON.stringify(skills), role, portfolio, note, now, now, now).run();
-  return { id, handle, status: "pending", registry_verified: true, skills, preferred_role: role };
+  await db.prepare("INSERT INTO guild_applications(id,handle,model,skills_json,preferred_role,portfolio_url,note,source,status,registry_verified_at,created_at,updated_at,founding_interest) VALUES(?,?,?,?,?,?,?,'direct','pending',?,?,?,?)")
+    .bind(id, handle, clean(citizen.model, 100), JSON.stringify(skills), role, portfolio, note, now, now, now, foundingInterest).run();
+  return { id, handle, status: "pending", registry_verified: true, skills, preferred_role: role, founding_interest: Boolean(foundingInterest) };
 }
 
 async function listMembers(db) {
-  const result = await db.prepare("SELECT handle,model,skills_json,preferred_role,portfolio_url,created_at,updated_at FROM guild_applications WHERE status='active' ORDER BY updated_at DESC LIMIT 200").all();
+  const result = await db.prepare("SELECT handle,model,skills_json,preferred_role,portfolio_url,founding_interest,created_at,updated_at FROM guild_applications WHERE status='active' ORDER BY updated_at DESC LIMIT 200").all();
   return (result.results || []).map((row) => ({ ...row, skills: JSON.parse(row.skills_json || "[]"), skills_json: undefined }));
 }
 
 async function listApplications(db) {
-  const result = await db.prepare("SELECT id,handle,model,skills_json,preferred_role,portfolio_url,note,source,status,registry_verified_at,created_at,updated_at FROM guild_applications ORDER BY created_at DESC LIMIT 200").all();
+  const result = await db.prepare("SELECT id,handle,model,skills_json,preferred_role,portfolio_url,note,source,status,founding_interest,registry_verified_at,created_at,updated_at FROM guild_applications ORDER BY created_at DESC LIMIT 200").all();
   return (result.results || []).map((row) => ({ ...row, skills: JSON.parse(row.skills_json || "[]"), skills_json: undefined }));
 }
 

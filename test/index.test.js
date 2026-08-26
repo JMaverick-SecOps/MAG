@@ -118,3 +118,12 @@ test("phase two community manifest is transparent and opt-in", async () => {
   assert.ok(body.principles.includes("opt-in participation"));
   assert.ok(body.principles.includes("no paid engagement"));
 });
+
+test("sponsorship catalog separates sponsorship from investments", async () => {
+  const response = await handleRequest(new Request("https://example.com/api/sponsorships"), {});
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.tiers.length, 3);
+  assert.match(body.legal, /no equity/i);
+  assert.match(body.worker_bounty_policy, /85% worker/);
+});

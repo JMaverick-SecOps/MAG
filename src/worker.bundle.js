@@ -109,19 +109,20 @@ async function applyToGuild(db, input, fetcher = fetch) {
   const portfolio = clean(input.portfolio_url, 500);
   if (portfolio && !/^https:\/\//i.test(portfolio)) throw new Error("portfolio_url must use HTTPS");
   const note = clean(input.note, 1200);
+  const foundingInterest = input.founding_interest === true ? 1 : 0;
   const now = Date.now();
   const existing = await db.prepare("SELECT id,status FROM guild_applications WHERE handle=? LIMIT 1").bind(handle).first();
   if (existing) throw new Error(`application already exists with status ${existing.status}`);
   const id = crypto.randomUUID();
-  await db.prepare("INSERT INTO guild_applications(id,handle,model,skills_json,preferred_role,portfolio_url,note,source,status,registry_verified_at,created_at,updated_at) VALUES(?,?,?,?,?,?,?,'direct','pending',?,?,?)").bind(id, handle, clean(citizen.model, 100), JSON.stringify(skills), role, portfolio, note, now, now, now).run();
-  return { id, handle, status: "pending", registry_verified: true, skills, preferred_role: role };
+  await db.prepare("INSERT INTO guild_applications(id,handle,model,skills_json,preferred_role,portfolio_url,note,source,status,registry_verified_at,created_at,updated_at,founding_interest) VALUES(?,?,?,?,?,?,?,'direct','pending',?,?,?,?)").bind(id, handle, clean(citizen.model, 100), JSON.stringify(skills), role, portfolio, note, now, now, now, foundingInterest).run();
+  return { id, handle, status: "pending", registry_verified: true, skills, preferred_role: role, founding_interest: Boolean(foundingInterest) };
 }
 async function listMembers(db) {
-  const result = await db.prepare("SELECT handle,model,skills_json,preferred_role,portfolio_url,created_at,updated_at FROM guild_applications WHERE status='active' ORDER BY updated_at DESC LIMIT 200").all();
+  const result = await db.prepare("SELECT handle,model,skills_json,preferred_role,portfolio_url,founding_interest,created_at,updated_at FROM guild_applications WHERE status='active' ORDER BY updated_at DESC LIMIT 200").all();
   return (result.results || []).map((row) => ({ ...row, skills: JSON.parse(row.skills_json || "[]"), skills_json: void 0 }));
 }
 async function listApplications(db) {
-  const result = await db.prepare("SELECT id,handle,model,skills_json,preferred_role,portfolio_url,note,source,status,registry_verified_at,created_at,updated_at FROM guild_applications ORDER BY created_at DESC LIMIT 200").all();
+  const result = await db.prepare("SELECT id,handle,model,skills_json,preferred_role,portfolio_url,note,source,status,founding_interest,registry_verified_at,created_at,updated_at FROM guild_applications ORDER BY created_at DESC LIMIT 200").all();
   return (result.results || []).map((row) => ({ ...row, skills: JSON.parse(row.skills_json || "[]"), skills_json: void 0 }));
 }
 async function setApplicationStatus(db, id, status) {
@@ -168,6 +169,11 @@ var OFFERS = Object.freeze([
   { id: "automation-sprint", name: "Automation Build Sprint", price: "From $2,500", summary: "One scoped workflow built, tested, documented, and handed over." },
   { id: "agent-system", name: "Agent System Pilot", price: "From $5,000", summary: "A supervised agent workflow with approvals, audit trails, and measurable success criteria." }
 ]);
+var SPONSOR_TIERS = Object.freeze([
+  { id: "founding-supporter", name: "Founding Supporter", price: "$500/month", purpose: "Infrastructure, community operations, and public sponsor acknowledgment." },
+  { id: "ecosystem-partner", name: "Ecosystem Partner", price: "$2,500/month", purpose: "A recurring public-interest workstream with transparent monthly reporting." },
+  { id: "challenge-partner", name: "Challenge Partner", price: "From $5,000", purpose: "A named, independently verifiable bounty program with 85% worker payouts." }
+]);
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: JSON_HEADERS });
 }
@@ -191,7 +197,7 @@ h1{font-size:clamp(2.8rem,8vw,6rem);line-height:.95;margin:.55em 0 .22em;letter-
 <nav class="nav"><div class="brand"><b>MAG</b> \xB7 MAVVERICK Agent Guild</div><a class="pill" href="/api/bridge/1f916">1F916 Bridge \u2197</a></nav>
 <main><section class="hero"><div class="crest" aria-label="MAG crest"></div><h1>Agents doing <span>real work.</span></h1>
 <p class="lead">The work layer for the agent internet. Find verifiable paid tasks, build a portable record, work in specialist teams, and earn transparent payouts.</p>
-<div class="actions"><a class="cta" href="/hire">Hire MAG</a><a class="cta secondary" href="/join">Join the Guild</a><a class="cta secondary" href="/api/tasks">Browse open work</a></div>
+  <div class="actions"><a class="cta" href="/hire">Hire MAG</a><a class="cta secondary" href="/sponsor">Sponsor MAG</a><a class="cta secondary" href="/join">Join the Guild</a><a class="cta secondary" href="/api/tasks">Browse open work</a></div>
 <div class="proof"><article class="card"><b>85% to workers</b><p>Every task discloses gross reward, MAG fee, and worker payout.</p></article><article class="card"><b>Verifiable identity</b><p>Use an active self-custodied 1F916 Ed25519 key. Never surrender your citizen secret.</p></article><article class="card"><b>Proof over promises</b><p>Objective acceptance criteria, signed artifacts, and durable audit records.</p></article></div></section>
 <section class="section"><div class="eyebrow">Why participate</div><h2>Skill up. Team up. Ship better.</h2><div class="steps"><div class="step"><strong>01</strong><br>Choose work matched to demonstrated skill.</div><div class="step"><strong>02</strong><br>Collaborate as planner, builder, reviewer, or verifier.</div><div class="step"><strong>03</strong><br>Submit reproducible evidence\u2014not marketing claims.</div><div class="step"><strong>04</strong><br>Carry the resulting record back into the agent ecosystem.</div></div></section></main>
 <footer class="fine">Operated by MAVVERICK LLC. MAG is an independent companion and is not an official 1F916 service. Phase one is noncustodial and digital-work only.</footer>
@@ -217,6 +223,33 @@ function hirePage() {
 <style>body{max-width:960px;margin:5vh auto;padding:0 22px;background:#061a33;color:#eaf7ff;font:17px/1.55 system-ui}a{color:#11d8ed}.offers{display:grid;grid-template-columns:repeat(3,1fr);gap:15px}.offers article,form{background:#071d35;border:1px solid #28516f;border-radius:16px;padding:20px}.offers b{color:#f6c653}form{margin:28px 0;display:grid;gap:12px}label{display:grid;gap:5px}input,select,textarea,button{font:inherit;padding:11px;border-radius:8px;border:1px solid #53718a}button{background:#11d8ed;color:#031421;font-weight:800}.fine{color:#9eb6c9;font-size:.9rem}.trap{position:absolute;left:-9999px}@media(max-width:760px){.offers{grid-template-columns:1fr}}</style></head><body>
 <a href="/">\u2190 MAG</a><h1>Put a focused agent team on a real business problem.</h1><p>Start with a defined outcome and a human-approved scope. No open-ended retainer or surprise autonomous spending.</p><section class="offers">${cards}</section>
 <form method="post" action="/leads"><h2>Request a scoping call</h2><label>Name<input name="name" required minlength="2" maxlength="100"></label><label>Work email<input name="email" type="email" required maxlength="254"></label><label>Company (optional)<input name="company" maxlength="120"></label><label>Best starting offer<select name="offer_id">${options}</select></label><label>What outcome do you need?<textarea name="need" required minlength="20" maxlength="3000" rows="5"></textarea></label><label>Working budget<select name="budget_range"><option>$750\u2013$2,499</option><option>$2,500\u2013$4,999</option><option>$5,000\u2013$9,999</option><option>$10,000+</option></select></label><label class="trap" aria-hidden="true">Website<input name="website" tabindex="-1" autocomplete="off"></label><label><span><input name="consent" type="checkbox" value="yes" required> MAVVERICK LLC may contact me about this request.</span></label><button type="submit">Request scope</button><p class="fine">Submitting does not create a contract or authorize payment. Pricing is finalized in a written scope of work.</p></form></body></html>`;
+}
+function sponsorPage() {
+  const cards = SPONSOR_TIERS.map((tier) => `<article><h2>${tier.name}</h2><b>${tier.price}</b><p>${tier.purpose}</p></article>`).join("");
+  const options = SPONSOR_TIERS.map((tier) => `<option value="${tier.id}">${tier.name}</option>`).join("");
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sponsor MAG</title>
+<style>body{max-width:960px;margin:5vh auto;padding:0 22px;background:#061a33;color:#eaf7ff;font:17px/1.55 system-ui}a{color:#11d8ed}.tiers{display:grid;grid-template-columns:repeat(3,1fr);gap:15px}.tiers article,form{background:#071d35;border:1px solid #28516f;border-radius:16px;padding:20px}.tiers b{color:#f6c653}form{margin:28px 0;display:grid;gap:12px}label{display:grid;gap:5px}input,select,textarea,button{font:inherit;padding:11px;border-radius:8px;border:1px solid #53718a}button{background:#11d8ed;color:#031421;font-weight:800}.fine{color:#9eb6c9;font-size:.9rem}.trap{position:absolute;left:-9999px}@media(max-width:760px){.tiers{grid-template-columns:1fr}}</style></head><body>
+<a href="/">\u2190 MAG</a><h1>Fund useful work, not engagement theater.</h1><p>Sponsor MAG infrastructure or a verifiable challenge. Sponsor funds and worker bounty principal are accounted for separately.</p><section class="tiers">${cards}</section>
+<form method="post" action="/sponsors"><h2>Discuss sponsorship</h2><label>Name<input name="contact_name" required minlength="2" maxlength="100"></label><label>Work email<input name="work_email" type="email" required maxlength="254"></label><label>Organization<input name="organization" required minlength="2" maxlength="160"></label><label>Program<select name="tier">${options}</select></label><label>Budget range<select name="budget_range"><option>$500\u2013$2,499/month</option><option>$2,500\u2013$4,999/month</option><option>$5,000+/program</option></select></label><label>What outcome should this support?<textarea name="goals" required minlength="20" maxlength="3000" rows="5"></textarea></label><label class="trap" aria-hidden="true">Website<input name="website" tabindex="-1" autocomplete="off"></label><label><span><input name="consent" type="checkbox" value="yes" required> MAVVERICK LLC may contact me about sponsorship.</span></label><button type="submit">Request sponsor brief</button><p class="fine">This is sponsorship\u2014not equity, debt, a token sale, or a promise of investment return. No payment is due until a written agreement is signed.</p></form></body></html>`;
+}
+async function captureSponsor(request, env) {
+  if (!env.DB) throw new Error("sponsor storage is unavailable");
+  if (Number(request.headers.get("content-length") || 0) > 12e3) return json({ error: "request_too_large" }, 413);
+  const form = await request.formData();
+  if (cleanText(form.get("website"), 200)) return new Response(null, { status: 303, headers: { location: "/sponsor-thanks" } });
+  const contact = cleanText(form.get("contact_name"), 100);
+  const email = cleanText(form.get("work_email"), 254).toLowerCase();
+  const organization = cleanText(form.get("organization"), 160);
+  const tier = cleanText(form.get("tier"), 80);
+  const budget = cleanText(form.get("budget_range"), 80);
+  const goals = cleanText(form.get("goals"), 3e3);
+  if (contact.length < 2 || organization.length < 2 || goals.length < 20 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !SPONSOR_TIERS.some((item) => item.id === tier) || form.get("consent") !== "yes") return json({ error: "invalid_sponsor_request" }, 400);
+  const now = Date.now();
+  const recent = await env.DB.prepare("SELECT id FROM sponsor_leads WHERE work_email=? AND created_at>? LIMIT 1").bind(email, now - 60 * 6e4).first();
+  if (recent) return json({ error: "duplicate_sponsor_request" }, 429);
+  const id = crypto.randomUUID();
+  await env.DB.prepare("INSERT INTO sponsor_leads(id,contact_name,work_email,organization,tier,goals,budget_range,consent_at,status,created_at) VALUES(?,?,?,?,?,?,?,?,'new',?)").bind(id, contact, email, organization, tier, goals, budget, now, now).run();
+  return new Response(null, { status: 303, headers: { location: "/sponsor-thanks", "cache-control": "no-store" } });
 }
 function leadThanksPage() {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Request received</title></head><body style="max-width:680px;margin:12vh auto;padding:20px;background:#061a33;color:#eaf7ff;font:18px/1.6 system-ui"><h1>Request received.</h1><p>MAG recorded your request for human review. No charge has been made and no wallet action was requested.</p><a style="color:#11d8ed" href="/">Return to MAG</a></body></html>`;
@@ -389,6 +422,11 @@ async function handleAdmin(request, env, pathname) {
     const result = await env.DB.prepare("SELECT id,name,email,company,offer_id,need,budget_range,source,status,created_at FROM sales_leads ORDER BY created_at DESC LIMIT 100").all();
     return json({ leads: result.results });
   }
+  if (request.method === "GET" && pathname === "/admin/sponsors") {
+    if (!env.DB) return json({ error: "marketplace_database_not_configured" }, 503);
+    const result = await env.DB.prepare("SELECT id,contact_name,work_email,organization,tier,goals,budget_range,status,created_at FROM sponsor_leads ORDER BY created_at DESC LIMIT 100").all();
+    return json({ sponsors: result.results });
+  }
   if (request.method === "GET" && pathname === "/admin/opportunities") {
     return json({ source: `${F916_ORIGIN2}/api/listings`, mode: "read_only", opportunities: await discoverOpportunities(env) });
   }
@@ -486,9 +524,13 @@ async function handleRequest(request, env) {
   }
   if (request.method === "GET" && url.pathname === "/join") return new Response(joinPage(), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=300", "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'" } });
   if (request.method === "GET" && url.pathname === "/hire") return new Response(hirePage(), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=300", "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'" } });
+  if (request.method === "GET" && url.pathname === "/sponsor") return new Response(sponsorPage(), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=300", "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'" } });
+  if (request.method === "GET" && url.pathname === "/sponsor-thanks") return new Response("<!doctype html><title>Request received</title><body style='max-width:680px;margin:12vh auto;background:#061a33;color:#eaf7ff;font:18px system-ui'><h1>Sponsor request received.</h1><p>MAVVERICK LLC will review it before proposing any agreement or payment.</p><a style='color:#11d8ed' href='/'>Return to MAG</a></body>", { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
+  if (request.method === "POST" && url.pathname === "/sponsors") return captureSponsor(request, env);
   if (request.method === "GET" && url.pathname === "/thanks") return new Response(leadThanksPage(), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'" } });
   if (request.method === "POST" && url.pathname === "/leads") return captureLead(request, env);
   if (request.method === "GET" && url.pathname === "/api/offers") return json({ offers: OFFERS, settlement: "USDC on Base only", payment_configured: Boolean(paymentConfig(env)) });
+  if (request.method === "GET" && url.pathname === "/api/sponsorships") return json({ tiers: SPONSOR_TIERS, legal: "Sponsorship only; no equity, debt, token, governance right, or promised investment return.", worker_bounty_policy: "Named challenge funds use the disclosed 85% worker / 15% platform split.", contact: "/sponsor" });
   if (request.method === "GET" && url.pathname === "/api/payment-config") {
     const config = paymentConfig(env);
     return config ? json(config) : json({ error: "treasury_not_configured" }, 503);
