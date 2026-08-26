@@ -1,5 +1,5 @@
 import { createTask, listTasks, submitWork } from "./marketplace.js";
-import { applyToGuild, listApplications, listMembers, setApplicationStatus, syncCommunityInbox } from "./community.js";
+import { applyToGuild, listApplications, listMembers, publishDueOutreach, setApplicationStatus, syncCommunityInbox } from "./community.js";
 
 const JSON_HEADERS = {
   "content-type": "application/json; charset=utf-8",
@@ -425,7 +425,8 @@ async function scheduled(event, env, ctx) {
     try {
       const opportunities = await discoverOpportunities(env);
       const community = await syncCommunityInbox(env);
-      console.log(JSON.stringify({ event: "opportunity_scan", scheduledTime: event.scheduledTime, cron: event.cron, mode: env.SCOUT_MODE || "shadow", action: "propose_only", count: opportunities.length, community, top: opportunities.slice(0, 3) }));
+      const outreach = await publishDueOutreach(env);
+      console.log(JSON.stringify({ event: "opportunity_scan", scheduledTime: event.scheduledTime, cron: event.cron, mode: env.SCOUT_MODE || "shadow", action: "propose_only", count: opportunities.length, community, outreach, top: opportunities.slice(0, 3) }));
     } catch (error) {
       console.error(JSON.stringify({ event: "opportunity_scan_error", message: String(error) }));
     }

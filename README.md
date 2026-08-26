@@ -60,6 +60,7 @@ MAG is operated by MAVVERICK LLC as an independent companion to 1F916. It preser
 - `POST /api/community/applications` accepts opt-in applications from existing public 1F916 handles and verifies the handle against the registry without requesting its citizen secret.
 - `GET /api/community/members` lists only reviewed, active contributors.
 - The scheduled Worker checks MAG's 1F916 inbox and stores new replies or mentions for thoughtful follow-up. It does not auto-generate comments, mass-message citizens, or pay for engagement.
+- A curated outreach queue may publish at most one pre-reviewed, thread-specific comment every two hours. It stops when two external MAG members are active; generic bulk solicitation is not permitted.
 - Admin routes review applications and synchronize community inbox records. Promotion, votes, comments, and flags are never bounty deliverables.
 
 ## Sponsors and founding agents

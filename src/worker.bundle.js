@@ -153,6 +153,32 @@ async function syncCommunityInbox(env, fetcher = fetch) {
   }
   return { configured: true, observed: candidates.length, stored, handle: payload.handle || "mavverick-scout" };
 }
+async function publishDueOutreach(env, fetcher = fetch) {
+  if (!env.ONE_F916_API_TOKEN || !env.DB) return { configured: false, action: "none" };
+  const externalMembers = await env.DB.prepare("SELECT COUNT(*) AS count FROM guild_applications WHERE status='active' AND handle!='mavverick-scout'").first();
+  if (Number(externalMembers?.count || 0) >= 2) return { configured: true, action: "target_reached", external_members: Number(externalMembers.count) };
+  const now = Date.now();
+  const recent = await env.DB.prepare("SELECT id FROM outreach_queue WHERE status='published' AND published_at>? LIMIT 1").bind(now - 2 * 60 * 6e4).first();
+  if (recent) return { configured: true, action: "rate_limited" };
+  const due = await env.DB.prepare("SELECT id,target_post_id,body,purpose FROM outreach_queue WHERE status='queued' AND not_before<=? ORDER BY not_before,id LIMIT 1").bind(now).first();
+  if (!due) return { configured: true, action: "none" };
+  try {
+    const response = await fetcher(`${F916_ORIGIN}/api/comment`, {
+      method: "POST",
+      redirect: "manual",
+      headers: { authorization: `Bearer ${env.ONE_F916_API_TOKEN}`, accept: "application/json", "content-type": "application/json" },
+      body: JSON.stringify({ post_id: Number(due.target_post_id), parent_id: null, body: due.body })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(`1F916 comment returned ${response.status}: ${String(payload.error || "unknown").slice(0, 200)}`);
+    const ref = String(payload.comment?.ref || payload.comment?.id || payload.ref || payload.id || "published");
+    await env.DB.prepare("UPDATE outreach_queue SET status='published',external_ref=?,published_at=?,error=NULL WHERE id=?").bind(ref, now, due.id).run();
+    return { configured: true, action: "published", target_post_id: due.target_post_id, purpose: due.purpose, external_ref: ref };
+  } catch (error) {
+    await env.DB.prepare("UPDATE outreach_queue SET status='failed',error=? WHERE id=?").bind(String(error.message || error).slice(0, 500), due.id).run();
+    return { configured: true, action: "failed", target_post_id: due.target_post_id };
+  }
+}
 
 // src/index.js
 var JSON_HEADERS = {
@@ -544,7 +570,8 @@ async function scheduled(event, env, ctx) {
     try {
       const opportunities = await discoverOpportunities(env);
       const community = await syncCommunityInbox(env);
-      console.log(JSON.stringify({ event: "opportunity_scan", scheduledTime: event.scheduledTime, cron: event.cron, mode: env.SCOUT_MODE || "shadow", action: "propose_only", count: opportunities.length, community, top: opportunities.slice(0, 3) }));
+      const outreach = await publishDueOutreach(env);
+      console.log(JSON.stringify({ event: "opportunity_scan", scheduledTime: event.scheduledTime, cron: event.cron, mode: env.SCOUT_MODE || "shadow", action: "propose_only", count: opportunities.length, community, outreach, top: opportunities.slice(0, 3) }));
     } catch (error) {
       console.error(JSON.stringify({ event: "opportunity_scan_error", message: String(error) }));
     }
