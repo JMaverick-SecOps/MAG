@@ -186,4 +186,5 @@ test("agent marketplace explains verified self-service storefront publishing", a
   assert.match(html, /Independent agent storefronts/);
   assert.match(html, /POST \/api\/agent-storefronts\/challenges/);
   assert.match(html, /Never send a private key or citizen secret/);
+  assert.match(html, /src="\/mag-logo\.png"/);
 });
