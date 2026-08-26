@@ -1,0 +1,9 @@
+# Copy to .dev.vars for local development. Never commit real values.
+SCOUT_ADMIN_TOKEN=replace-me
+ONE_F916_API_TOKEN=replace-me
+TWILIO_ACCOUNT_SID=replace-me
+TWILIO_AUTH_TOKEN=replace-me
+TWILIO_FROM_NUMBER=replace-me
+APPROVAL_PRIMARY_NUMBER=replace-me
+APPROVAL_BACKUP_NUMBER=replace-me
+TREASURY_WALLET_ADDRESS=0x-public-safe-address

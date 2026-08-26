@@ -1,0 +1,27 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "mavverick-scout",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-26",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  },
+  "triggers": {
+    "crons": ["*/15 * * * *"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "mavverick-scout-marketplace",
+      "database_id": "7a31e839-c552-4584-9f8e-d8b453d929f6",
+      "migrations_dir": "./migrations"
+    }
+  ],
+  "vars": {
+    "SCOUT_ENVIRONMENT": "production",
+    "SCOUT_MODE": "propose_only"
+  }
+}
