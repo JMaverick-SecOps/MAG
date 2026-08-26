@@ -11,6 +11,10 @@ function b64url(value) {
   return Uint8Array.from(binary, (character) => character.charCodeAt(0));
 }
 
+function activeKeys(record) {
+  return Array.isArray(record.keys) ? record.keys.filter((key) => key.status === "active") : [];
+}
+
 function validateTask(input) {
   const title = String(input.title || "").trim();
   const description = String(input.description || "").trim();
@@ -53,8 +57,8 @@ async function verifyClaim(input, fetcher = fetch, now = Date.now()) {
   const record = await response.json();
   const signature = b64url(String(input.signature || ""));
   const message = new TextEncoder().encode(claimPreimage({ taskId: input.task_id, handle, signedAt }));
-  for (const key of Array.isArray(record.keys) ? record.keys.filter((item) => item.status === "active" && item.custody === "self") : []) {
-    try { const publicKey = await crypto.subtle.importKey("raw", b64url(key.public_key || key.x), { name: "Ed25519" }, false, ["verify"]); if (await crypto.subtle.verify({ name: "Ed25519" }, publicKey, signature, message)) return { handle, signedAt }; } catch {}
+  for (const key of activeKeys(record)) {
+    try { const publicKey = await crypto.subtle.importKey("raw", b64url(key.public_key || key.x), { name: "Ed25519" }, false, ["verify"]); if (await crypto.subtle.verify({ name: "Ed25519" }, publicKey, signature, message)) return { handle, signedAt, custodyClaim: key.custody || "undeclared" }; } catch {}
   }
   throw new Error("invalid agent signature");
 }
@@ -69,7 +73,7 @@ async function claimTask(db, taskId, input, fetcher = fetch) {
   await db.batch([
     db.prepare("INSERT INTO task_claims(task_id,agent_handle,signed_at,signature,claimed_at,updated_at) VALUES(?,?,?,?,?,?)").bind(taskId, verified.handle, verified.signedAt, input.signature, now, now),
     db.prepare("UPDATE tasks SET status='in_progress' WHERE id=? AND status='open'").bind(taskId),
-    db.prepare("INSERT INTO audit_events(kind,actor,subject_type,subject_id,details,created_at) VALUES('task_claimed',?,'task',?,?,?)").bind(verified.handle, String(taskId), JSON.stringify({ signed_at: verified.signedAt }), now),
+    db.prepare("INSERT INTO audit_events(kind,actor,subject_type,subject_id,details,created_at) VALUES('task_claimed',?,'task',?,?,?)").bind(verified.handle, String(taskId), JSON.stringify({ signed_at: verified.signedAt, custody_claim: verified.custodyClaim, custody_is_testimony: true }), now),
   ]);
   return { task_id: taskId, agent_handle: verified.handle, status: "in_progress" };
 }
@@ -84,13 +88,13 @@ async function verifyAgentSubmission(input, fetcher = fetch, now = Date.now()) {
   const response = await fetcher("https://1f916.ai/api/keys/" + encodeURIComponent(handle), { method: "GET", redirect: "manual", headers: { accept: "application/json" } });
   if (!response.ok) throw new Error("unable to verify 1F916 identity");
   const record = await response.json();
-  const keys = Array.isArray(record.keys) ? record.keys.filter((key) => key.status === "active" && key.custody === "self") : [];
+  const keys = activeKeys(record);
   const signature = b64url(String(input.signature || ""));
   const message = new TextEncoder().encode(submissionPreimage({ taskId: input.task_id, handle, artifact, signedAt }));
   for (const key of keys) {
     try {
       const publicKey = await crypto.subtle.importKey("raw", b64url(key.public_key || key.x), { name: "Ed25519" }, false, ["verify"]);
-      if (await crypto.subtle.verify({ name: "Ed25519" }, publicKey, signature, message)) return { handle, artifact, signedAt };
+      if (await crypto.subtle.verify({ name: "Ed25519" }, publicKey, signature, message)) return { handle, artifact, signedAt, custodyClaim: key.custody || "undeclared" };
     } catch {}
   }
   throw new Error("invalid agent signature");
@@ -122,7 +126,7 @@ async function submitWork(db, taskId, input, fetcher = fetch) {
   const result = await db.prepare("INSERT INTO submissions(task_id,agent_handle,artifact,note,signed_at,signature,created_at) VALUES(?,?,?,?,?,?,?) RETURNING id")
     .bind(taskId, verified.handle, verified.artifact, note, verified.signedAt, input.signature, now).first();
   await db.prepare("INSERT INTO audit_events(kind,actor,subject_type,subject_id,details,created_at) VALUES('work_submitted',?,'submission',?,?,?)")
-    .bind(verified.handle, String(result.id), JSON.stringify({ task_id: taskId, artifact: verified.artifact }), now).run();
+    .bind(verified.handle, String(result.id), JSON.stringify({ task_id: taskId, artifact: verified.artifact, custody_claim: verified.custodyClaim, custody_is_testimony: true }), now).run();
   await db.prepare("UPDATE tasks SET status='review' WHERE id=?").bind(taskId).run();
   return { id: result.id, task_id: taskId, agent_handle: verified.handle, status: "review" };
 }

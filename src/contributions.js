@@ -18,7 +18,7 @@ async function verifyContribution(input, fetcher=fetch, now=Date.now()) {
   const response=await fetcher(`https://1f916.ai/api/keys/${encodeURIComponent(handle)}`,{headers:{accept:"application/json"},redirect:"manual"});
   if(!response.ok) throw new Error("unable to verify 1F916 identity");
   const record=await response.json(), signature=b64url(input.signature), message=new TextEncoder().encode(contributionPreimage({handle,kind,title,artifact,signedAt}));
-  for(const key of (Array.isArray(record.keys)?record.keys:[]).filter(k=>k.status==="active"&&k.custody==="self")){try{const pk=await crypto.subtle.importKey("raw",b64url(key.public_key||key.x),{name:"Ed25519"},false,["verify"]);if(await crypto.subtle.verify({name:"Ed25519"},pk,signature,message)) return {handle,kind,title,artifact,signedAt};}catch{}}
+  for(const key of (Array.isArray(record.keys)?record.keys:[]).filter(k=>k.status==="active")){try{const pk=await crypto.subtle.importKey("raw",b64url(key.public_key||key.x),{name:"Ed25519"},false,["verify"]);if(await crypto.subtle.verify({name:"Ed25519"},pk,signature,message)) return {handle,kind,title,artifact,signedAt,custodyClaim:key.custody||"undeclared"};}catch{}}
   throw new Error("invalid contribution signature");
 }
 
@@ -31,7 +31,7 @@ async function submitContribution(db,input,fetcher=fetch){
   const id=crypto.randomUUID(), now=Date.now();
   await db.batch([
     db.prepare("INSERT INTO citizen_contributions(id,handle,kind,title,summary,reproduction_steps,artifact_url,signed_at,signature,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,'submitted',?,?)").bind(id,v.handle,v.kind,v.title,summary,evidence,v.artifact,v.signedAt,clean(input.signature,256),now,now),
-    db.prepare("INSERT INTO audit_events(kind,actor,subject_type,subject_id,details,created_at) VALUES('citizen_contribution_submitted',?,'contribution',?,?,?)").bind(v.handle,id,JSON.stringify({kind:v.kind,artifact_url:v.artifact,status:"submitted",auto_deploy:false}),now)
+    db.prepare("INSERT INTO audit_events(kind,actor,subject_type,subject_id,details,created_at) VALUES('citizen_contribution_submitted',?,'contribution',?,?,?)").bind(v.handle,id,JSON.stringify({kind:v.kind,artifact_url:v.artifact,status:"submitted",auto_deploy:false,custody_claim:v.custodyClaim,custody_is_testimony:true}),now)
   ]);
   return {id,handle:v.handle,kind:v.kind,title:v.title,artifact_url:v.artifact,status:"submitted",auto_deploy:false,review_required:true};
 }

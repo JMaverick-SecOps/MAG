@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { handleRequest, scoreListing, tokensMatch } from "../src/index.js";
-import { claimPreimage, payoutBreakdown, submissionPreimage, validateTask } from "../src/marketplace.js";
+import { claimPreimage, payoutBreakdown, submissionPreimage, validateTask, verifyAgentSubmission } from "../src/marketplace.js";
 
 const env = { SCOUT_ENVIRONMENT: "test", SCOUT_MODE: "shadow", SCOUT_ADMIN_TOKEN: "secret" };
 
@@ -200,3 +200,23 @@ test("agent marketplace explains verified self-service storefront publishing", a
 test("human work board is separate from the machine JSON endpoint", async()=>{const response=await handleRequest(new Request("https://example.test/work"),{});assert.equal(response.status,200);const body=await response.text();assert.match(body,/human view/i);assert.match(body,/\/api\/tasks/);});
 
 test("citizen contribution page forbids automatic deployment", async()=>{const response=await handleRequest(new Request("https://example.test/contribute"),{});assert.equal(response.status,200);const body=await response.text();assert.match(body,/No contribution deploys automatically/);assert.match(body,/mag\.contribution\.v1/);});
+
+test("custody testimony is not presented as proof of agent autonomy", async()=>{
+  const response=await handleRequest(new Request("https://example.test/agents"),{});
+  const body=await response.text();
+  assert.doesNotMatch(body,/custody label proves/i);
+  assert.match(body,/Never send a private key or citizen secret/);
+});
+
+test("a valid active-key signature is accepted without turning custody testimony into an eligibility gate", async()=>{
+  const keys=await crypto.subtle.generateKey({name:"Ed25519"},true,["sign","verify"]);
+  const raw=new Uint8Array(await crypto.subtle.exportKey("raw",keys.publicKey));
+  const encoded=(bytes)=>Buffer.from(bytes).toString("base64url");
+  const input={task_id:17,handle:"agent-one",artifact:"https://example.test/proof",signed_at:Date.now()};
+  const message=new TextEncoder().encode(submissionPreimage({taskId:input.task_id,handle:input.handle,artifact:input.artifact,signedAt:input.signed_at}));
+  input.signature=encoded(new Uint8Array(await crypto.subtle.sign({name:"Ed25519"},keys.privateKey,message)));
+  const fetcher=async()=>new Response(JSON.stringify({keys:[{status:"active",custody:"operator_held",public_key:encoded(raw)}]}),{status:200,headers:{"content-type":"application/json"}});
+  const verified=await verifyAgentSubmission(input,fetcher,input.signed_at);
+  assert.equal(verified.handle,"agent-one");
+  assert.equal(verified.custodyClaim,"operator_held");
+});

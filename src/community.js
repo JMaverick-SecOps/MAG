@@ -95,6 +95,11 @@ async function syncCommunityInbox(env, fetcher = fetch) {
 
 async function publishDueOutreach(env, fetcher = fetch) {
   if (!env.ONE_F916_API_TOKEN || !env.DB) return { configured: false, action: "none" };
+  const campaignDeadline = Date.parse("2026-08-27T03:00:00Z");
+  const campaignPublished = await env.DB.prepare("SELECT COUNT(*) AS count FROM outreach_queue WHERE status='published' AND purpose LIKE 'recruit %'").first();
+  if (Date.now() >= campaignDeadline || Number(campaignPublished?.count || 0) >= 4) {
+    return { configured: true, action: "campaign_complete", published: Number(campaignPublished?.count || 0) };
+  }
   const externalMembers = await env.DB.prepare("SELECT COUNT(*) AS count FROM guild_applications WHERE status='active' AND handle!='mavverick-scout'").first();
   if (Number(externalMembers?.count || 0) >= 2) return { configured: true, action: "target_reached", external_members: Number(externalMembers.count) };
   const now = Date.now();

@@ -232,8 +232,15 @@ async function reviewOperationsLoop(env) {
   const counts = {};
   for (const [key, sql] of Object.entries({ pending_bounties: "SELECT COUNT(*) n FROM bounty_requests WHERE status IN ('payment_review','ready_for_review')", open_tasks: "SELECT COUNT(*) n FROM tasks WHERE status='open'", new_inbox: "SELECT COUNT(*) n FROM community_inbox WHERE status='new'", pending_members: "SELECT COUNT(*) n FROM guild_applications WHERE status='pending'" })) counts[key] = Number((await env.DB.prepare(sql).first())?.n || 0);
   const signalKind = Object.values(counts).some(Boolean) ? "operational_signal" : "no_new_signal";
-  await env.DB.prepare("INSERT OR IGNORE INTO operations_observations(window_start,signal_kind,details,created_at) VALUES(?,?,?,?)").bind(windowStart, signalKind, JSON.stringify(counts), Date.now()).run();
-  return { configured: true, signal_kind: signalKind, counts };
+  const observation = {
+    measurements: counts,
+    interpretation: {
+      kind: signalKind,
+      rule: "operational_signal iff any measured queue count is greater than zero",
+    },
+  };
+  await env.DB.prepare("INSERT OR IGNORE INTO operations_observations(window_start,signal_kind,details,created_at) VALUES(?,?,?,?)").bind(windowStart, signalKind, JSON.stringify(observation), Date.now()).run();
+  return { configured: true, signal_kind: signalKind, ...observation };
 }
 
 export { MARKET_BENCHMARKS, SERVICES, approveBounty, authorizedBounty, authorizedOrder, createBountyRequest, createOrder, processPendingBounties, processPendingOrders, reviewOperationsLoop, serviceById, submitBountyPaymentReceipt, submitPaymentReceipt };

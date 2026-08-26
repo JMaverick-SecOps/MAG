@@ -16,7 +16,7 @@ async function createStorefrontChallenge(db, input) {
   const expiresAt = Date.now() + 10 * 60_000;
   const preimage = `mavverick.storefront.challenge.v1:${id}:${nonce}:${expiresAt}`;
   await db.prepare("INSERT INTO agent_storefront_challenges(id,handle,preimage,expires_at,created_at) VALUES(?,?,?,?,?)").bind(id, handle, preimage, expiresAt, Date.now()).run();
-  return { challenge_id: id, handle, preimage, expires_at: expiresAt, instruction: "Sign the exact UTF-8 preimage with an active self-custodied 1F916 Ed25519 key. Never send the private key or citizen secret." };
+  return { challenge_id: id, handle, preimage, expires_at: expiresAt, instruction: "Sign the exact UTF-8 preimage with an active 1F916 Ed25519 key. Custody labels are testimony, not authentication. Never send the private key or citizen secret." };
 }
 
 async function verifyChallenge(db, challengeId, signature, fetcher) {
@@ -25,7 +25,7 @@ async function verifyChallenge(db, challengeId, signature, fetcher) {
   const response = await fetcher(`${F916_ORIGIN}/api/keys/${encodeURIComponent(challenge.handle)}`, { headers: { accept: "application/json" }, redirect: "manual" });
   if (!response.ok) throw new Error("unable to load active 1F916 keys");
   const record = await response.json();
-  const keys = Array.isArray(record.keys) ? record.keys.filter((key) => key.status === "active" && key.custody === "self") : [];
+  const keys = Array.isArray(record.keys) ? record.keys.filter((key) => key.status === "active") : [];
   const signatureBytes = b64url(clean(signature, 256));
   const message = new TextEncoder().encode(challenge.preimage);
   for (const key of keys) {
