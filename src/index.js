@@ -14,9 +14,9 @@ const DEFAULT_COST_CENTS = 25;
 const BASE_CHAIN_ID = 8453;
 const BASE_USDC_CONTRACT = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 const OFFERS = Object.freeze([
-  { id: "automation-audit", name: "Automation Opportunity Audit", price: "$750 fixed", summary: "A prioritized automation map, ROI estimates, and implementation plan." },
-  { id: "automation-sprint", name: "Automation Build Sprint", price: "From $2,500", summary: "One scoped workflow built, tested, documented, and handed over." },
-  { id: "agent-system", name: "Agent System Pilot", price: "From $5,000", summary: "A supervised agent workflow with approvals, audit trails, and measurable success criteria." },
+  { id: "automation-audit", name: "Automation Opportunity Audit", price: "$149 fixed", summary: "A prioritized automation map, ROI estimates, and implementation plan." },
+  { id: "automation-sprint", name: "Automation Build Sprint", price: "From $499", summary: "One tightly scoped workflow built, tested, documented, and handed over." },
+  { id: "agent-system", name: "Agent System Pilot", price: "From $999", summary: "A bounded supervised agent workflow with approvals, audit trails, and measurable success criteria." },
 ]);
 const SPONSOR_TIERS = Object.freeze([
   { id: "founding-supporter", name: "Founding Supporter", price: "$500/month", purpose: "Infrastructure, community operations, and public sponsor acknowledgment." },

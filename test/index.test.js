@@ -89,7 +89,7 @@ test("public offer catalog has clear starting prices and USDC-only settlement", 
   assert.equal(body.offers.length, 3);
   assert.equal(body.payment_configured, false);
   assert.equal(body.settlement, "USDC on Base only");
-  assert.match(body.offers[0].price, /\$750/);
+  assert.match(body.offers[0].price, /\$149/);
 });
 
 test("revenue readiness reports capabilities but never secrets", async () => {

@@ -274,15 +274,15 @@ async function ensureCitizenKey(env, fetcher = fetch) {
 
 // src/commerce.js
 var SERVICES = Object.freeze([
-  { id: "sow-studio", name: "Autonomous SOW Studio", from_atomic: "250000000", category: "sow", risk: "low", modes: ["draft_only"], summary: "Requirements synthesis, assumptions, deliverables, acceptance criteria, schedule, and pricing model." },
-  { id: "network-exposure-test", name: "Authorized Network Exposure Test", from_atomic: "750000000", category: "security", risk: "high", modes: ["read_only", "preapproved_safe_tests"], summary: "Passive exposure mapping and explicitly authorized non-destructive checks against named assets." },
-  { id: "m365-audit", name: "Microsoft 365 Audit & Hardening", from_atomic: "1000000000", category: "security", risk: "high", modes: ["audit_only", "preapproved_changes"], summary: "Tenant posture audit, evidence pack, remediation plan, and separately authorized hardening changes." },
-  { id: "email-deliverability", name: "Email Deliverability Lab", from_atomic: "500000000", category: "operations", risk: "medium", modes: ["owned_domains_only"], summary: "SPF, DKIM, DMARC, DNS, reputation, content, and controlled inbox-placement testing for authorized domains." },
-  { id: "trading-research", name: "Trading Research Agent", from_atomic: "500000000", category: "research", risk: "high", modes: ["research_only", "signals", "customer_authorized_execution"], summary: "Backtests, entry/exit signals, risk scenarios, and optional customer-controlled execution under explicit limits." },
-  { id: "automation-build", name: "Automation Build", from_atomic: "2500000000", category: "automation", risk: "medium", modes: ["sandbox", "preapproved_changes"], summary: "API, data, document, support, sales, and operations workflows built and tested against acceptance criteria." },
-  { id: "software-delivery", name: "Software & Agent Delivery", from_atomic: "5000000000", category: "engineering", risk: "medium", modes: ["pull_request", "sandbox_deploy"], summary: "Features, integrations, applications, games, tests, documentation, and supervised deployment packages." },
-  { id: "creative-production", name: "Creative Production", from_atomic: "250000000", category: "creative", risk: "low", modes: ["artifact_delivery"], summary: "Original music concepts, visual assets, copy, research briefs, presentations, and other rights-cleared digital work." },
-  { id: "custom-autonomous", name: "Custom Autonomous Task", from_atomic: "750000000", category: "custom", risk: "review", modes: ["proposal_first"], summary: "Any lawful, remote, objectively verifiable task that community agents can complete without hidden human labor." }
+  { id: "sow-studio", name: "Autonomous SOW Studio", from_atomic: "49000000", category: "sow", risk: "low", modes: ["draft_only"], summary: "Requirements synthesis, assumptions, deliverables, acceptance criteria, schedule, and pricing model." },
+  { id: "network-exposure-test", name: "Authorized Network Exposure Test", from_atomic: "199000000", category: "security", risk: "high", modes: ["read_only", "preapproved_safe_tests"], summary: "Passive exposure mapping and explicitly authorized non-destructive checks against named assets." },
+  { id: "m365-audit", name: "Microsoft 365 Audit & Hardening", from_atomic: "249000000", category: "security", risk: "high", modes: ["audit_only", "preapproved_changes"], summary: "Tenant posture audit, evidence pack, remediation plan, and separately authorized hardening changes." },
+  { id: "email-deliverability", name: "Email Deliverability Lab", from_atomic: "149000000", category: "operations", risk: "medium", modes: ["owned_domains_only"], summary: "SPF, DKIM, DMARC, DNS, reputation, content, and controlled inbox-placement testing for authorized domains." },
+  { id: "trading-research", name: "Trading Research Agent", from_atomic: "99000000", category: "research", risk: "high", modes: ["research_only", "signals", "customer_authorized_execution"], summary: "Backtests, entry/exit signals, risk scenarios, and optional customer-controlled execution under explicit limits." },
+  { id: "automation-build", name: "Automation Build", from_atomic: "299000000", category: "automation", risk: "medium", modes: ["sandbox", "preapproved_changes"], summary: "API, data, document, support, sales, and operations workflows built and tested against acceptance criteria." },
+  { id: "software-delivery", name: "Software & Agent Delivery", from_atomic: "499000000", category: "engineering", risk: "medium", modes: ["pull_request", "sandbox_deploy"], summary: "Features, integrations, applications, games, tests, documentation, and supervised deployment packages." },
+  { id: "creative-production", name: "Creative Production", from_atomic: "49000000", category: "creative", risk: "low", modes: ["artifact_delivery"], summary: "Original music concepts, visual assets, copy, research briefs, presentations, and other rights-cleared digital work." },
+  { id: "custom-autonomous", name: "Custom Autonomous Task", from_atomic: "99000000", category: "custom", risk: "review", modes: ["proposal_first"], summary: "Any lawful, remote, objectively verifiable task that community agents can complete without hidden human labor." }
 ]);
 var HEX_TX = /^0x[a-fA-F0-9]{64}$/;
 var EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -389,9 +389,9 @@ var DEFAULT_COST_CENTS = 25;
 var BASE_CHAIN_ID = 8453;
 var BASE_USDC_CONTRACT = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 var OFFERS = Object.freeze([
-  { id: "automation-audit", name: "Automation Opportunity Audit", price: "$750 fixed", summary: "A prioritized automation map, ROI estimates, and implementation plan." },
-  { id: "automation-sprint", name: "Automation Build Sprint", price: "From $2,500", summary: "One scoped workflow built, tested, documented, and handed over." },
-  { id: "agent-system", name: "Agent System Pilot", price: "From $5,000", summary: "A supervised agent workflow with approvals, audit trails, and measurable success criteria." }
+  { id: "automation-audit", name: "Automation Opportunity Audit", price: "$149 fixed", summary: "A prioritized automation map, ROI estimates, and implementation plan." },
+  { id: "automation-sprint", name: "Automation Build Sprint", price: "From $499", summary: "One tightly scoped workflow built, tested, documented, and handed over." },
+  { id: "agent-system", name: "Agent System Pilot", price: "From $999", summary: "A bounded supervised agent workflow with approvals, audit trails, and measurable success criteria." }
 ]);
 var SPONSOR_TIERS = Object.freeze([
   { id: "founding-supporter", name: "Founding Supporter", price: "$500/month", purpose: "Infrastructure, community operations, and public sponsor acknowledgment." },
