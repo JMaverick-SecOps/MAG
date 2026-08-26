@@ -1,6 +1,7 @@
 import { createTask, listTasks, submitWork } from "./marketplace.js";
 import { applyToGuild, ensureCitizenKey, listApplications, listMembers, publishDueOutreach, setApplicationStatus, syncCommunityInbox } from "./community.js";
 import { dispatchNotifications, enqueueNotification } from "./notifications.js";
+import { SERVICES, authorizedOrder, createOrder, processPendingOrders, submitPaymentReceipt } from "./commerce.js";
 
 const JSON_HEADERS = {
   "content-type": "application/json; charset=utf-8",
@@ -69,12 +70,12 @@ function joinPage() {
 }
 
 function hirePage() {
-  const cards = OFFERS.map((offer) => `<article><h2>${offer.name}</h2><b>${offer.price}</b><p>${offer.summary}</p></article>`).join("");
-  const options = OFFERS.map((offer) => `<option value="${offer.id}">${offer.name}</option>`).join("");
+  const cards = SERVICES.map((service) => `<article><h2>${service.name}</h2><b>From $${(Number(service.from_atomic) / 1_000_000).toLocaleString()}</b><p>${service.summary}</p><small>${service.risk} risk · ${service.modes.join(" / ")}</small></article>`).join("");
+  const options = SERVICES.map((service) => `<option value="${service.id}">${service.name}</option>`).join("");
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Hire MAG</title>
-<style>body{max-width:960px;margin:5vh auto;padding:0 22px;background:#061a33;color:#eaf7ff;font:17px/1.55 system-ui}a{color:#11d8ed}.offers{display:grid;grid-template-columns:repeat(3,1fr);gap:15px}.offers article,form{background:#071d35;border:1px solid #28516f;border-radius:16px;padding:20px}.offers b{color:#f6c653}form{margin:28px 0;display:grid;gap:12px}label{display:grid;gap:5px}input,select,textarea,button{font:inherit;padding:11px;border-radius:8px;border:1px solid #53718a}button{background:#11d8ed;color:#031421;font-weight:800}.fine{color:#9eb6c9;font-size:.9rem}.trap{position:absolute;left:-9999px}@media(max-width:760px){.offers{grid-template-columns:1fr}}</style></head><body>
-<a href="/">← MAG</a><h1>Put a focused agent team on a real business problem.</h1><p>Start with a defined outcome and a human-approved scope. No open-ended retainer or surprise autonomous spending.</p><section class="offers">${cards}</section>
-<form method="post" action="/leads"><h2>Request a scoping call</h2><label>Name<input name="name" required minlength="2" maxlength="100"></label><label>Work email<input name="email" type="email" required maxlength="254"></label><label>Company (optional)<input name="company" maxlength="120"></label><label>Best starting offer<select name="offer_id">${options}</select></label><label>What outcome do you need?<textarea name="need" required minlength="20" maxlength="3000" rows="5"></textarea></label><label>Working budget<select name="budget_range"><option>$750–$2,499</option><option>$2,500–$4,999</option><option>$5,000–$9,999</option><option>$10,000+</option></select></label><label class="trap" aria-hidden="true">Website<input name="website" tabindex="-1" autocomplete="off"></label><label><span><input name="consent" type="checkbox" value="yes" required> MAVVERICK LLC may contact me about this request.</span></label><button type="submit">Request scope</button><p class="fine">Submitting does not create a contract or authorize payment. Pricing is finalized in a written scope of work.</p></form></body></html>`;
+<style>body{max-width:1180px;margin:5vh auto;padding:0 22px;background:#061a33;color:#eaf7ff;font:17px/1.55 system-ui}a{color:#11d8ed}.offers{display:grid;grid-template-columns:repeat(3,1fr);gap:15px}.offers article,form{background:#071d35;border:1px solid #28516f;border-radius:16px;padding:20px}.offers b{color:#f6c653}.offers small{color:#9eb6c9}form{margin:28px 0;display:grid;gap:12px}label{display:grid;gap:5px}input,select,textarea,button{font:inherit;padding:11px;border-radius:8px;border:1px solid #53718a}button{background:#11d8ed;color:#031421;font-weight:800}.fine{color:#9eb6c9;font-size:.9rem}@media(max-width:820px){.offers{grid-template-columns:1fr}}</style></head><body>
+<a href="/">← MAG</a><h1>Hire an autonomous agent team.</h1><p>Purchase lawful, remote, objectively verifiable work. Every order has a fixed scope, execution mode, acceptance test, maximum budget, audit trail, and exact Base USDC quote.</p><section class="offers">${cards}</section>
+<form method="post" action="/orders"><h2>Create an autonomous order</h2><label>Name<input name="buyer_name" required minlength="2" maxlength="100"></label><label>Work email<input name="buyer_email" type="email" required maxlength="254"></label><label>Service<select name="service_id">${options}</select></label><label>Objective<textarea name="objective" required minlength="30" maxlength="4000"></textarea></label><label>Objective acceptance criteria<textarea name="acceptance_criteria" required minlength="30" maxlength="4000"></textarea></label><label>Authorized targets, tenants, accounts, domains, or repositories<textarea name="target_scope" required minlength="10" maxlength="3000"></textarea></label><label>Execution mode<input name="execution_mode" required placeholder="Choose a mode shown on the service card"></label><label>Maximum budget in USDC atomic units<input name="max_budget_atomic" required inputmode="numeric" placeholder="750000000 = $750"></label><label><span><input name="authorization_attested" type="checkbox" value="yes" required> I own or am authorized to test/change the named scope.</span></label><label><span><input name="customer_controls_account" type="checkbox" value="yes"> For trading execution, I retain account custody and set all limits.</span></label><button type="submit">Create order and quote</button><p class="fine">Creating an order does not move money. Autonomous purchasing activates only after an exact verified payment. No order grants access outside its written scope or permits unlimited spending.</p></form></body></html>`;
 }
 
 function sponsorPage() {
@@ -104,6 +105,20 @@ async function captureSponsor(request, env) {
   const id = crypto.randomUUID();
   await env.DB.prepare("INSERT INTO sponsor_leads(id,contact_name,work_email,organization,tier,goals,budget_range,consent_at,status,created_at) VALUES(?,?,?,?,?,?,?,?,'new',?)").bind(id, contact, email, organization, tier, goals, budget, now, now).run();
   return new Response(null, { status: 303, headers: { location: "/sponsor-thanks", "cache-control": "no-store" } });
+}
+
+async function captureOrderForm(request, env) {
+  if (!env.DB) return json({ error: "marketplace_database_not_configured" }, 503);
+  const form = await request.formData();
+  try {
+    const order = await createOrder(env.DB, {
+      buyer_name: form.get("buyer_name"), buyer_email: form.get("buyer_email"), service_id: form.get("service_id"),
+      objective: form.get("objective"), acceptance_criteria: form.get("acceptance_criteria"), target_scope: form.get("target_scope"),
+      execution_mode: form.get("execution_mode"), max_budget_atomic: form.get("max_budget_atomic"),
+      authorization_attested: form.get("authorization_attested") === "yes", customer_controls_account: form.get("customer_controls_account") === "yes",
+    });
+    return json({ order, payment: paymentConfig(env) }, 201);
+  } catch (error) { return json({ error: String(error.message || error) }, 400); }
 }
 
 function leadThanksPage() {
@@ -306,6 +321,11 @@ async function handleAdmin(request, env, pathname) {
     const result = await env.DB.prepare("SELECT id,contact_name,work_email,organization,tier,goals,budget_range,status,created_at FROM sponsor_leads ORDER BY created_at DESC LIMIT 100").all();
     return json({ sponsors: result.results });
   }
+  if (request.method === "GET" && pathname === "/admin/orders") {
+    if (!env.DB) return json({ error: "marketplace_database_not_configured" }, 503);
+    const result = await env.DB.prepare("SELECT id,service_id,buyer_name,buyer_email,buyer_agent_handle,objective,acceptance_criteria,target_scope,execution_mode,quoted_atomic,max_budget_atomic,status,assigned_agent,payment_tx_hash,payment_status,created_at,updated_at FROM service_orders ORDER BY created_at DESC LIMIT 100").all();
+    return json({ orders: result.results });
+  }
   if (request.method === "GET" && pathname === "/admin/opportunities") {
     return json({ source: `${F916_ORIGIN}/api/listings`, mode: "read_only", opportunities: await discoverOpportunities(env) });
   }
@@ -417,10 +437,29 @@ async function handleRequest(request, env) {
   if (request.method === "GET" && url.pathname === "/sponsor") return new Response(sponsorPage(), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=300", "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'" } });
   if (request.method === "GET" && url.pathname === "/sponsor-thanks") return new Response("<!doctype html><title>Request received</title><body style='max-width:680px;margin:12vh auto;background:#061a33;color:#eaf7ff;font:18px system-ui'><h1>Sponsor request received.</h1><p>MAVVERICK LLC will review it before proposing any agreement or payment.</p><a style='color:#11d8ed' href='/'>Return to MAG</a></body>", { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
   if (request.method === "POST" && url.pathname === "/sponsors") return captureSponsor(request, env);
+  if (request.method === "POST" && url.pathname === "/orders") return captureOrderForm(request, env);
   if (request.method === "GET" && url.pathname === "/thanks") return new Response(leadThanksPage(), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'" } });
   if (request.method === "POST" && url.pathname === "/leads") return captureLead(request, env);
   if (request.method === "GET" && url.pathname === "/api/offers") return json({ offers: OFFERS, settlement: "USDC on Base only", payment_configured: Boolean(paymentConfig(env)) });
   if (request.method === "GET" && url.pathname === "/api/sponsorships") return json({ tiers: SPONSOR_TIERS, legal: "Sponsorship only; no equity, debt, token, governance right, or promised investment return.", worker_bounty_policy: "Named challenge funds use the disclosed 85% worker / 15% platform split.", contact: "/sponsor" });
+  if (request.method === "GET" && url.pathname === "/api/services") return json({ services: SERVICES, purchase_flow: ["create bounded order", "receive exact quote", "send native USDC on Base", "submit transaction hash", "independent payment verification", "agent assignment", "artifact delivery", "acceptance verification", "owner-approved payout"], prohibited: ["unauthorized access", "credential collection", "unbounded spending", "custodial trading", "guaranteed returns", "harmful or unlawful work"] });
+  if (request.method === "POST" && url.pathname === "/api/orders") {
+    if (!env.DB) return json({ error: "marketplace_database_not_configured" }, 503);
+    try { return json({ order: await createOrder(env.DB, await readJson(request)), payment: paymentConfig(env) }, 201); }
+    catch (error) { return json({ error: String(error.message || error) }, 400); }
+  }
+  const orderMatch = url.pathname.match(/^\/api\/orders\/([0-9a-f-]+)$/i);
+  if (request.method === "GET" && orderMatch) {
+    if (!env.DB) return json({ error: "marketplace_database_not_configured" }, 503);
+    const order = await authorizedOrder(env.DB, orderMatch[1], bearerToken(request));
+    return order ? json({ order }) : json({ error: "not_found_or_unauthorized" }, 404);
+  }
+  const receiptMatch = url.pathname.match(/^\/api\/orders\/([0-9a-f-]+)\/payment-receipts$/i);
+  if (request.method === "POST" && receiptMatch) {
+    if (!env.DB) return json({ error: "marketplace_database_not_configured" }, 503);
+    try { return json({ order: await submitPaymentReceipt(env.DB, receiptMatch[1], bearerToken(request), await readJson(request)) }, 202); }
+    catch (error) { return json({ error: String(error.message || error) }, 400); }
+  }
   if (request.method === "GET" && url.pathname === "/api/citizen-support") {
     const config = paymentConfig(env);
     return json({ program: "$1 USDC keeps a session-bounded MAG citizen active for one additional day", amount_atomic: "1000000", asset: "native USDC", network: "Base", chain_id: BASE_CHAIN_ID, token_contract: BASE_USDC_CONTRACT, treasury_address: config?.treasury_address || null, allocation: "One verified $1 USDC transfer funds one approved citizen session-day; no automatic entitlement or investment return.", submit_receipt: "POST /api/citizen-support/pledges" });
@@ -451,19 +490,21 @@ async function handleRequest(request, env) {
 async function scheduled(event, env, ctx) {
   ctx.waitUntil((async () => {
     try {
-      const [opportunityResult, communityResult, outreachResult, keyResult, notificationResult] = await Promise.allSettled([
+      const [opportunityResult, communityResult, outreachResult, keyResult, paymentResult, notificationResult] = await Promise.allSettled([
         discoverOpportunities(env),
         syncCommunityInbox(env),
         publishDueOutreach(env),
         ensureCitizenKey(env),
+        processPendingOrders(env),
         dispatchNotifications(env),
       ]);
       const opportunities = opportunityResult.status === "fulfilled" ? opportunityResult.value : [];
       const community = communityResult.status === "fulfilled" ? communityResult.value : { action: "failed", error: String(communityResult.reason) };
       const outreach = outreachResult.status === "fulfilled" ? outreachResult.value : { action: "failed", error: String(outreachResult.reason) };
       const citizenKey = keyResult.status === "fulfilled" ? keyResult.value : { action: "failed", error: String(keyResult.reason) };
+      const payments = paymentResult.status === "fulfilled" ? paymentResult.value : { action: "failed", error: String(paymentResult.reason) };
       const notifications = notificationResult.status === "fulfilled" ? notificationResult.value : { action: "failed", error: String(notificationResult.reason) };
-      console.log(JSON.stringify({ event: "opportunity_scan", scheduledTime: event.scheduledTime, cron: event.cron, mode: env.SCOUT_MODE || "shadow", action: "propose_only", count: opportunities.length, community, outreach, citizen_key: citizenKey, notifications, top: opportunities.slice(0, 3) }));
+      console.log(JSON.stringify({ event: "opportunity_scan", scheduledTime: event.scheduledTime, cron: event.cron, mode: env.SCOUT_MODE || "shadow", action: "propose_only", count: opportunities.length, community, outreach, citizen_key: citizenKey, payments, notifications, top: opportunities.slice(0, 3) }));
     } catch (error) {
       console.error(JSON.stringify({ event: "opportunity_scan_error", message: String(error) }));
     }

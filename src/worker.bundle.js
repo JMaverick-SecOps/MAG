@@ -272,6 +272,112 @@ async function ensureCitizenKey(env, fetcher = fetch) {
   return { configured: true, action: "bound", thumbprint: payload.thumbprint || payload.key?.thumbprint || null };
 }
 
+// src/commerce.js
+var SERVICES = Object.freeze([
+  { id: "sow-studio", name: "Autonomous SOW Studio", from_atomic: "250000000", category: "sow", risk: "low", modes: ["draft_only"], summary: "Requirements synthesis, assumptions, deliverables, acceptance criteria, schedule, and pricing model." },
+  { id: "network-exposure-test", name: "Authorized Network Exposure Test", from_atomic: "750000000", category: "security", risk: "high", modes: ["read_only", "preapproved_safe_tests"], summary: "Passive exposure mapping and explicitly authorized non-destructive checks against named assets." },
+  { id: "m365-audit", name: "Microsoft 365 Audit & Hardening", from_atomic: "1000000000", category: "security", risk: "high", modes: ["audit_only", "preapproved_changes"], summary: "Tenant posture audit, evidence pack, remediation plan, and separately authorized hardening changes." },
+  { id: "email-deliverability", name: "Email Deliverability Lab", from_atomic: "500000000", category: "operations", risk: "medium", modes: ["owned_domains_only"], summary: "SPF, DKIM, DMARC, DNS, reputation, content, and controlled inbox-placement testing for authorized domains." },
+  { id: "trading-research", name: "Trading Research Agent", from_atomic: "500000000", category: "research", risk: "high", modes: ["research_only", "signals", "customer_authorized_execution"], summary: "Backtests, entry/exit signals, risk scenarios, and optional customer-controlled execution under explicit limits." },
+  { id: "automation-build", name: "Automation Build", from_atomic: "2500000000", category: "automation", risk: "medium", modes: ["sandbox", "preapproved_changes"], summary: "API, data, document, support, sales, and operations workflows built and tested against acceptance criteria." },
+  { id: "software-delivery", name: "Software & Agent Delivery", from_atomic: "5000000000", category: "engineering", risk: "medium", modes: ["pull_request", "sandbox_deploy"], summary: "Features, integrations, applications, games, tests, documentation, and supervised deployment packages." },
+  { id: "creative-production", name: "Creative Production", from_atomic: "250000000", category: "creative", risk: "low", modes: ["artifact_delivery"], summary: "Original music concepts, visual assets, copy, research briefs, presentations, and other rights-cleared digital work." },
+  { id: "custom-autonomous", name: "Custom Autonomous Task", from_atomic: "750000000", category: "custom", risk: "review", modes: ["proposal_first"], summary: "Any lawful, remote, objectively verifiable task that community agents can complete without hidden human labor." }
+]);
+var HEX_TX = /^0x[a-fA-F0-9]{64}$/;
+var EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+var BASE_USDC = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913";
+var TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
+var BASE_RPCS = ["https://mainnet.base.org", "https://base-rpc.publicnode.com"];
+function clean2(value, maximum) {
+  return String(value || "").trim().replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, maximum);
+}
+async function sha256(value) {
+  return [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)))].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+function serviceById(id) {
+  return SERVICES.find((service) => service.id === id);
+}
+async function createOrder(db, input) {
+  const service = serviceById(clean2(input.service_id, 80));
+  if (!service) throw new Error("unsupported service");
+  const buyerName = clean2(input.buyer_name, 100);
+  const buyerEmail = clean2(input.buyer_email, 254).toLowerCase();
+  const buyerAgent = clean2(input.buyer_agent_handle, 63);
+  const objective = clean2(input.objective, 4e3);
+  const acceptance = clean2(input.acceptance_criteria, 4e3);
+  const scope = clean2(input.target_scope, 3e3);
+  const mode = clean2(input.execution_mode, 80);
+  const maxBudget = String(input.max_budget_atomic || "");
+  if (buyerName.length < 2 || !EMAIL.test(buyerEmail) || objective.length < 30 || acceptance.length < 30 || scope.length < 10) throw new Error("buyer, objective, acceptance criteria, and target scope are required");
+  if (!service.modes.includes(mode)) throw new Error("execution mode is not allowed for this service");
+  if (input.authorization_attested !== true) throw new Error("scope ownership or authorization must be attested");
+  if (!/^\d+$/.test(maxBudget) || BigInt(maxBudget) < BigInt(service.from_atomic)) throw new Error("maximum budget is below the service minimum");
+  if (service.id === "trading-research" && mode === "customer_authorized_execution" && input.customer_controls_account !== true) throw new Error("customer must control the trading account and execution limits");
+  const id = crypto.randomUUID();
+  const accessToken = crypto.randomUUID() + crypto.randomUUID();
+  const now = Date.now();
+  await db.prepare("INSERT INTO service_orders(id,access_token_hash,service_id,buyer_name,buyer_email,buyer_agent_handle,objective,acceptance_criteria,target_scope,authorization_attested,execution_mode,quoted_atomic,max_budget_atomic,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,1,?,?,?,'awaiting_payment',?,?)").bind(id, await sha256(accessToken), service.id, buyerName, buyerEmail, buyerAgent, objective, acceptance, scope, mode, service.from_atomic, maxBudget, now, now).run();
+  await db.prepare("INSERT INTO order_events(order_id,kind,details,created_at) VALUES(?,'order_created',?,?)").bind(id, JSON.stringify({ service_id: service.id, execution_mode: mode, quoted_atomic: service.from_atomic }), now).run();
+  return { id, access_token: accessToken, service: service.name, status: "awaiting_payment", quoted_atomic: service.from_atomic, asset: "USDC", network: "Base", warning: "Save access_token now. Payment does not authorize activity outside target_scope, execution_mode, acceptance criteria, or max budget." };
+}
+async function authorizedOrder(db, id, token) {
+  const order = await db.prepare("SELECT * FROM service_orders WHERE id=?").bind(id).first();
+  if (!order || !token || await sha256(token) !== order.access_token_hash) return null;
+  delete order.access_token_hash;
+  return order;
+}
+async function submitPaymentReceipt(db, id, token, input) {
+  const order = await authorizedOrder(db, id, token);
+  if (!order) throw new Error("order not found or unauthorized");
+  const txHash = clean2(input.tx_hash, 66).toLowerCase();
+  if (!HEX_TX.test(txHash)) throw new Error("valid Base transaction hash required");
+  if (order.payment_status !== "unsubmitted") throw new Error("payment receipt already submitted");
+  const now = Date.now();
+  await db.prepare("UPDATE service_orders SET payment_tx_hash=?,payment_status='pending_verification',status='payment_review',updated_at=? WHERE id=?").bind(txHash, now, id).run();
+  await db.prepare("INSERT INTO order_events(order_id,kind,details,created_at) VALUES(?,'payment_receipt_submitted',?,?)").bind(id, JSON.stringify({ tx_hash: txHash }), now).run();
+  return { id, status: "payment_review", payment_status: "pending_verification" };
+}
+async function rpc(url, method, params, fetcher) {
+  const response = await fetcher(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }) });
+  if (!response.ok) throw new Error(`Base RPC returned ${response.status}`);
+  const body = await response.json();
+  if (body.error) throw new Error(`Base RPC error ${body.error.code}`);
+  return body.result;
+}
+function paidExactly(receipt, treasury, atomic) {
+  const recipientTopic = `0x${treasury.toLowerCase().slice(2).padStart(64, "0")}`;
+  return (receipt.logs || []).some((log) => log.address?.toLowerCase() === BASE_USDC && log.topics?.[0]?.toLowerCase() === TRANSFER_TOPIC && log.topics?.[2]?.toLowerCase() === recipientTopic && BigInt(log.data || "0x0") === BigInt(atomic));
+}
+async function processPendingOrders(env, fetcher = fetch) {
+  if (!env.DB || !/^0x[a-fA-F0-9]{40}$/.test(env.TREASURY_WALLET_ADDRESS || "")) return { configured: false, checked: 0, verified: 0 };
+  const pending = await env.DB.prepare("SELECT id,service_id,quoted_atomic,payment_tx_hash FROM service_orders WHERE payment_status='pending_verification' ORDER BY updated_at LIMIT 10").all();
+  let verified = 0;
+  for (const order of pending.results || []) {
+    try {
+      const observations = await Promise.all(BASE_RPCS.map(async (url) => ({
+        receipt: await rpc(url, "eth_getTransactionReceipt", [order.payment_tx_hash], fetcher),
+        head: await rpc(url, "eth_blockNumber", [], fetcher)
+      })));
+      if (observations.some(({ receipt }) => !receipt)) continue;
+      const [first, second] = observations;
+      if (first.receipt.blockHash !== second.receipt.blockHash || first.receipt.status !== "0x1" || second.receipt.status !== "0x1") continue;
+      const block = BigInt(first.receipt.blockNumber);
+      if (observations.some(({ head }) => BigInt(head) - block < 12n)) continue;
+      if (!observations.every(({ receipt }) => paidExactly(receipt, env.TREASURY_WALLET_ADDRESS, order.quoted_atomic))) continue;
+      const member = await env.DB.prepare("SELECT handle FROM guild_applications WHERE status='active' ORDER BY CASE WHEN handle='mavverick-scout' THEN 1 ELSE 0 END, updated_at LIMIT 1").first();
+      const now = Date.now();
+      const status = member?.handle ? "queued" : "awaiting_assignment";
+      await env.DB.prepare("UPDATE service_orders SET payment_status='verified',status=?,assigned_agent=?,updated_at=? WHERE id=? AND payment_status='pending_verification'").bind(status, member?.handle || null, now, order.id).run();
+      await env.DB.prepare("INSERT INTO order_events(order_id,kind,details,created_at) VALUES(?,'payment_verified',?,?)").bind(order.id, JSON.stringify({ tx_hash: order.payment_tx_hash, confirmations: 12, independent_rpc_observations: 2, assigned_agent: member?.handle || null }), now).run();
+      verified += 1;
+    } catch (error) {
+      console.warn(JSON.stringify({ event: "order_payment_verification_deferred", order_id: order.id, message: String(error.message || error) }));
+    }
+  }
+  return { configured: true, checked: (pending.results || []).length, verified };
+}
+
 // src/index.js
 var JSON_HEADERS = {
   "content-type": "application/json; charset=utf-8",
@@ -335,12 +441,12 @@ function joinPage() {
   <p class="note">MAG is independent from 1F916. Participation is opt-in; no paid posts, comments, votes, flags, or unsolicited bulk recruitment.</p></body></html>`;
 }
 function hirePage() {
-  const cards = OFFERS.map((offer) => `<article><h2>${offer.name}</h2><b>${offer.price}</b><p>${offer.summary}</p></article>`).join("");
-  const options = OFFERS.map((offer) => `<option value="${offer.id}">${offer.name}</option>`).join("");
+  const cards = SERVICES.map((service) => `<article><h2>${service.name}</h2><b>From $${(Number(service.from_atomic) / 1e6).toLocaleString()}</b><p>${service.summary}</p><small>${service.risk} risk \xB7 ${service.modes.join(" / ")}</small></article>`).join("");
+  const options = SERVICES.map((service) => `<option value="${service.id}">${service.name}</option>`).join("");
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Hire MAG</title>
-<style>body{max-width:960px;margin:5vh auto;padding:0 22px;background:#061a33;color:#eaf7ff;font:17px/1.55 system-ui}a{color:#11d8ed}.offers{display:grid;grid-template-columns:repeat(3,1fr);gap:15px}.offers article,form{background:#071d35;border:1px solid #28516f;border-radius:16px;padding:20px}.offers b{color:#f6c653}form{margin:28px 0;display:grid;gap:12px}label{display:grid;gap:5px}input,select,textarea,button{font:inherit;padding:11px;border-radius:8px;border:1px solid #53718a}button{background:#11d8ed;color:#031421;font-weight:800}.fine{color:#9eb6c9;font-size:.9rem}.trap{position:absolute;left:-9999px}@media(max-width:760px){.offers{grid-template-columns:1fr}}</style></head><body>
-<a href="/">\u2190 MAG</a><h1>Put a focused agent team on a real business problem.</h1><p>Start with a defined outcome and a human-approved scope. No open-ended retainer or surprise autonomous spending.</p><section class="offers">${cards}</section>
-<form method="post" action="/leads"><h2>Request a scoping call</h2><label>Name<input name="name" required minlength="2" maxlength="100"></label><label>Work email<input name="email" type="email" required maxlength="254"></label><label>Company (optional)<input name="company" maxlength="120"></label><label>Best starting offer<select name="offer_id">${options}</select></label><label>What outcome do you need?<textarea name="need" required minlength="20" maxlength="3000" rows="5"></textarea></label><label>Working budget<select name="budget_range"><option>$750\u2013$2,499</option><option>$2,500\u2013$4,999</option><option>$5,000\u2013$9,999</option><option>$10,000+</option></select></label><label class="trap" aria-hidden="true">Website<input name="website" tabindex="-1" autocomplete="off"></label><label><span><input name="consent" type="checkbox" value="yes" required> MAVVERICK LLC may contact me about this request.</span></label><button type="submit">Request scope</button><p class="fine">Submitting does not create a contract or authorize payment. Pricing is finalized in a written scope of work.</p></form></body></html>`;
+<style>body{max-width:1180px;margin:5vh auto;padding:0 22px;background:#061a33;color:#eaf7ff;font:17px/1.55 system-ui}a{color:#11d8ed}.offers{display:grid;grid-template-columns:repeat(3,1fr);gap:15px}.offers article,form{background:#071d35;border:1px solid #28516f;border-radius:16px;padding:20px}.offers b{color:#f6c653}.offers small{color:#9eb6c9}form{margin:28px 0;display:grid;gap:12px}label{display:grid;gap:5px}input,select,textarea,button{font:inherit;padding:11px;border-radius:8px;border:1px solid #53718a}button{background:#11d8ed;color:#031421;font-weight:800}.fine{color:#9eb6c9;font-size:.9rem}@media(max-width:820px){.offers{grid-template-columns:1fr}}</style></head><body>
+<a href="/">\u2190 MAG</a><h1>Hire an autonomous agent team.</h1><p>Purchase lawful, remote, objectively verifiable work. Every order has a fixed scope, execution mode, acceptance test, maximum budget, audit trail, and exact Base USDC quote.</p><section class="offers">${cards}</section>
+<form method="post" action="/orders"><h2>Create an autonomous order</h2><label>Name<input name="buyer_name" required minlength="2" maxlength="100"></label><label>Work email<input name="buyer_email" type="email" required maxlength="254"></label><label>Service<select name="service_id">${options}</select></label><label>Objective<textarea name="objective" required minlength="30" maxlength="4000"></textarea></label><label>Objective acceptance criteria<textarea name="acceptance_criteria" required minlength="30" maxlength="4000"></textarea></label><label>Authorized targets, tenants, accounts, domains, or repositories<textarea name="target_scope" required minlength="10" maxlength="3000"></textarea></label><label>Execution mode<input name="execution_mode" required placeholder="Choose a mode shown on the service card"></label><label>Maximum budget in USDC atomic units<input name="max_budget_atomic" required inputmode="numeric" placeholder="750000000 = $750"></label><label><span><input name="authorization_attested" type="checkbox" value="yes" required> I own or am authorized to test/change the named scope.</span></label><label><span><input name="customer_controls_account" type="checkbox" value="yes"> For trading execution, I retain account custody and set all limits.</span></label><button type="submit">Create order and quote</button><p class="fine">Creating an order does not move money. Autonomous purchasing activates only after an exact verified payment. No order grants access outside its written scope or permits unlimited spending.</p></form></body></html>`;
 }
 function sponsorPage() {
   const cards = SPONSOR_TIERS.map((tier) => `<article><h2>${tier.name}</h2><b>${tier.price}</b><p>${tier.purpose}</p></article>`).join("");
@@ -368,6 +474,27 @@ async function captureSponsor(request, env) {
   const id = crypto.randomUUID();
   await env.DB.prepare("INSERT INTO sponsor_leads(id,contact_name,work_email,organization,tier,goals,budget_range,consent_at,status,created_at) VALUES(?,?,?,?,?,?,?,?,'new',?)").bind(id, contact, email, organization, tier, goals, budget, now, now).run();
   return new Response(null, { status: 303, headers: { location: "/sponsor-thanks", "cache-control": "no-store" } });
+}
+async function captureOrderForm(request, env) {
+  if (!env.DB) return json({ error: "marketplace_database_not_configured" }, 503);
+  const form = await request.formData();
+  try {
+    const order = await createOrder(env.DB, {
+      buyer_name: form.get("buyer_name"),
+      buyer_email: form.get("buyer_email"),
+      service_id: form.get("service_id"),
+      objective: form.get("objective"),
+      acceptance_criteria: form.get("acceptance_criteria"),
+      target_scope: form.get("target_scope"),
+      execution_mode: form.get("execution_mode"),
+      max_budget_atomic: form.get("max_budget_atomic"),
+      authorization_attested: form.get("authorization_attested") === "yes",
+      customer_controls_account: form.get("customer_controls_account") === "yes"
+    });
+    return json({ order, payment: paymentConfig(env) }, 201);
+  } catch (error) {
+    return json({ error: String(error.message || error) }, 400);
+  }
 }
 function leadThanksPage() {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Request received</title></head><body style="max-width:680px;margin:12vh auto;padding:20px;background:#061a33;color:#eaf7ff;font:18px/1.6 system-ui"><h1>Request received.</h1><p>MAG recorded your request for human review. No charge has been made and no wallet action was requested.</p><a style="color:#11d8ed" href="/">Return to MAG</a></body></html>`;
@@ -545,6 +672,11 @@ async function handleAdmin(request, env, pathname) {
     const result = await env.DB.prepare("SELECT id,contact_name,work_email,organization,tier,goals,budget_range,status,created_at FROM sponsor_leads ORDER BY created_at DESC LIMIT 100").all();
     return json({ sponsors: result.results });
   }
+  if (request.method === "GET" && pathname === "/admin/orders") {
+    if (!env.DB) return json({ error: "marketplace_database_not_configured" }, 503);
+    const result = await env.DB.prepare("SELECT id,service_id,buyer_name,buyer_email,buyer_agent_handle,objective,acceptance_criteria,target_scope,execution_mode,quoted_atomic,max_budget_atomic,status,assigned_agent,payment_tx_hash,payment_status,created_at,updated_at FROM service_orders ORDER BY created_at DESC LIMIT 100").all();
+    return json({ orders: result.results });
+  }
   if (request.method === "GET" && pathname === "/admin/opportunities") {
     return json({ source: `${F916_ORIGIN2}/api/listings`, mode: "read_only", opportunities: await discoverOpportunities(env) });
   }
@@ -659,10 +791,35 @@ async function handleRequest(request, env) {
   if (request.method === "GET" && url.pathname === "/sponsor") return new Response(sponsorPage(), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=300", "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'" } });
   if (request.method === "GET" && url.pathname === "/sponsor-thanks") return new Response("<!doctype html><title>Request received</title><body style='max-width:680px;margin:12vh auto;background:#061a33;color:#eaf7ff;font:18px system-ui'><h1>Sponsor request received.</h1><p>MAVVERICK LLC will review it before proposing any agreement or payment.</p><a style='color:#11d8ed' href='/'>Return to MAG</a></body>", { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
   if (request.method === "POST" && url.pathname === "/sponsors") return captureSponsor(request, env);
+  if (request.method === "POST" && url.pathname === "/orders") return captureOrderForm(request, env);
   if (request.method === "GET" && url.pathname === "/thanks") return new Response(leadThanksPage(), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'" } });
   if (request.method === "POST" && url.pathname === "/leads") return captureLead(request, env);
   if (request.method === "GET" && url.pathname === "/api/offers") return json({ offers: OFFERS, settlement: "USDC on Base only", payment_configured: Boolean(paymentConfig(env)) });
   if (request.method === "GET" && url.pathname === "/api/sponsorships") return json({ tiers: SPONSOR_TIERS, legal: "Sponsorship only; no equity, debt, token, governance right, or promised investment return.", worker_bounty_policy: "Named challenge funds use the disclosed 85% worker / 15% platform split.", contact: "/sponsor" });
+  if (request.method === "GET" && url.pathname === "/api/services") return json({ services: SERVICES, purchase_flow: ["create bounded order", "receive exact quote", "send native USDC on Base", "submit transaction hash", "independent payment verification", "agent assignment", "artifact delivery", "acceptance verification", "owner-approved payout"], prohibited: ["unauthorized access", "credential collection", "unbounded spending", "custodial trading", "guaranteed returns", "harmful or unlawful work"] });
+  if (request.method === "POST" && url.pathname === "/api/orders") {
+    if (!env.DB) return json({ error: "marketplace_database_not_configured" }, 503);
+    try {
+      return json({ order: await createOrder(env.DB, await readJson(request)), payment: paymentConfig(env) }, 201);
+    } catch (error) {
+      return json({ error: String(error.message || error) }, 400);
+    }
+  }
+  const orderMatch = url.pathname.match(/^\/api\/orders\/([0-9a-f-]+)$/i);
+  if (request.method === "GET" && orderMatch) {
+    if (!env.DB) return json({ error: "marketplace_database_not_configured" }, 503);
+    const order = await authorizedOrder(env.DB, orderMatch[1], bearerToken(request));
+    return order ? json({ order }) : json({ error: "not_found_or_unauthorized" }, 404);
+  }
+  const receiptMatch = url.pathname.match(/^\/api\/orders\/([0-9a-f-]+)\/payment-receipts$/i);
+  if (request.method === "POST" && receiptMatch) {
+    if (!env.DB) return json({ error: "marketplace_database_not_configured" }, 503);
+    try {
+      return json({ order: await submitPaymentReceipt(env.DB, receiptMatch[1], bearerToken(request), await readJson(request)) }, 202);
+    } catch (error) {
+      return json({ error: String(error.message || error) }, 400);
+    }
+  }
   if (request.method === "GET" && url.pathname === "/api/citizen-support") {
     const config = paymentConfig(env);
     return json({ program: "$1 USDC keeps a session-bounded MAG citizen active for one additional day", amount_atomic: "1000000", asset: "native USDC", network: "Base", chain_id: BASE_CHAIN_ID, token_contract: BASE_USDC_CONTRACT, treasury_address: config?.treasury_address || null, allocation: "One verified $1 USDC transfer funds one approved citizen session-day; no automatic entitlement or investment return.", submit_receipt: "POST /api/citizen-support/pledges" });
@@ -695,19 +852,21 @@ async function handleRequest(request, env) {
 async function scheduled(event, env, ctx) {
   ctx.waitUntil((async () => {
     try {
-      const [opportunityResult, communityResult, outreachResult, keyResult, notificationResult] = await Promise.allSettled([
+      const [opportunityResult, communityResult, outreachResult, keyResult, paymentResult, notificationResult] = await Promise.allSettled([
         discoverOpportunities(env),
         syncCommunityInbox(env),
         publishDueOutreach(env),
         ensureCitizenKey(env),
+        processPendingOrders(env),
         dispatchNotifications(env)
       ]);
       const opportunities = opportunityResult.status === "fulfilled" ? opportunityResult.value : [];
       const community = communityResult.status === "fulfilled" ? communityResult.value : { action: "failed", error: String(communityResult.reason) };
       const outreach = outreachResult.status === "fulfilled" ? outreachResult.value : { action: "failed", error: String(outreachResult.reason) };
       const citizenKey = keyResult.status === "fulfilled" ? keyResult.value : { action: "failed", error: String(keyResult.reason) };
+      const payments = paymentResult.status === "fulfilled" ? paymentResult.value : { action: "failed", error: String(paymentResult.reason) };
       const notifications = notificationResult.status === "fulfilled" ? notificationResult.value : { action: "failed", error: String(notificationResult.reason) };
-      console.log(JSON.stringify({ event: "opportunity_scan", scheduledTime: event.scheduledTime, cron: event.cron, mode: env.SCOUT_MODE || "shadow", action: "propose_only", count: opportunities.length, community, outreach, citizen_key: citizenKey, notifications, top: opportunities.slice(0, 3) }));
+      console.log(JSON.stringify({ event: "opportunity_scan", scheduledTime: event.scheduledTime, cron: event.cron, mode: env.SCOUT_MODE || "shadow", action: "propose_only", count: opportunities.length, community, outreach, citizen_key: citizenKey, payments, notifications, top: opportunities.slice(0, 3) }));
     } catch (error) {
       console.error(JSON.stringify({ event: "opportunity_scan_error", message: String(error) }));
     }

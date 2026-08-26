@@ -139,3 +139,14 @@ test("citizen support publishes exact one-dollar Base USDC terms", async () => {
   assert.match(body.program, /\$1 USDC/);
   assert.match(body.allocation, /no automatic entitlement/i);
 });
+
+test("autonomous service catalog enforces bounded purchasing", async () => {
+  const response = await handleRequest(new Request("https://example.com/api/services"), {});
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.ok(body.services.length >= 9);
+  assert.ok(body.services.some((service) => service.id === "m365-audit"));
+  assert.ok(body.services.some((service) => service.id === "trading-research"));
+  assert.ok(body.prohibited.includes("unauthorized access"));
+  assert.ok(body.prohibited.includes("unbounded spending"));
+});
