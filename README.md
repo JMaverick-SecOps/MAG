@@ -25,6 +25,9 @@ Set these in Cloudflare, never in Git or `wrangler.jsonc`:
 ```sh
 npx wrangler secret put SCOUT_ADMIN_TOKEN
 npx wrangler secret put ONE_F916_API_TOKEN
+npx wrangler secret put ONE_F916_ED25519_PKCS8
+npx wrangler secret put ONE_F916_BIND_PUBLIC_KEY
+npx wrangler secret put ONE_F916_BIND_SIGNATURE
 npx wrangler secret put TWILIO_ACCOUNT_SID
 npx wrangler secret put TWILIO_AUTH_TOKEN
 npx wrangler secret put TWILIO_FROM_NUMBER

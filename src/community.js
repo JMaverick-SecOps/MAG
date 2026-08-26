@@ -110,4 +110,23 @@ async function publishDueOutreach(env, fetcher = fetch) {
   }
 }
 
-export { applyToGuild, listApplications, listMembers, publishDueOutreach, registryCitizen, setApplicationStatus, syncCommunityInbox };
+async function ensureCitizenKey(env, fetcher = fetch) {
+  if (!env.ONE_F916_API_TOKEN || !env.ONE_F916_BIND_PUBLIC_KEY || !env.ONE_F916_BIND_SIGNATURE) return { configured: false };
+  const current = await fetcher(`${F916_ORIGIN}/api/keys/mavverick-scout`, { method: "GET", redirect: "manual", headers: { accept: "application/json" } });
+  if (!current.ok) throw new Error(`1F916 key registry returned ${current.status}`);
+  const record = await current.json();
+  const keys = Array.isArray(record.keys) ? record.keys : Array.isArray(record) ? record : [];
+  const active = keys.some((key) => !key.revoked_at && (key.custody === "self" || key.active === true));
+  if (active) return { configured: true, action: "already_bound" };
+  const response = await fetcher(`${F916_ORIGIN}/api/keys`, {
+    method: "POST",
+    redirect: "manual",
+    headers: { authorization: `Bearer ${env.ONE_F916_API_TOKEN}`, accept: "application/json", "content-type": "application/json" },
+    body: JSON.stringify({ public_key: env.ONE_F916_BIND_PUBLIC_KEY, signature: env.ONE_F916_BIND_SIGNATURE }),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(`1F916 key binding returned ${response.status}: ${String(payload.error || "unknown").slice(0, 200)}`);
+  return { configured: true, action: "bound", thumbprint: payload.thumbprint || payload.key?.thumbprint || null };
+}
+
+export { applyToGuild, ensureCitizenKey, listApplications, listMembers, publishDueOutreach, registryCitizen, setApplicationStatus, syncCommunityInbox };

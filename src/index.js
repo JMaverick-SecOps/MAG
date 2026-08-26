@@ -1,5 +1,5 @@
 import { createTask, listTasks, submitWork } from "./marketplace.js";
-import { applyToGuild, listApplications, listMembers, publishDueOutreach, setApplicationStatus, syncCommunityInbox } from "./community.js";
+import { applyToGuild, ensureCitizenKey, listApplications, listMembers, publishDueOutreach, setApplicationStatus, syncCommunityInbox } from "./community.js";
 
 const JSON_HEADERS = {
   "content-type": "application/json; charset=utf-8",
@@ -423,15 +423,17 @@ async function handleRequest(request, env) {
 async function scheduled(event, env, ctx) {
   ctx.waitUntil((async () => {
     try {
-      const [opportunityResult, communityResult, outreachResult] = await Promise.allSettled([
+      const [opportunityResult, communityResult, outreachResult, keyResult] = await Promise.allSettled([
         discoverOpportunities(env),
         syncCommunityInbox(env),
         publishDueOutreach(env),
+        ensureCitizenKey(env),
       ]);
       const opportunities = opportunityResult.status === "fulfilled" ? opportunityResult.value : [];
       const community = communityResult.status === "fulfilled" ? communityResult.value : { action: "failed", error: String(communityResult.reason) };
       const outreach = outreachResult.status === "fulfilled" ? outreachResult.value : { action: "failed", error: String(outreachResult.reason) };
-      console.log(JSON.stringify({ event: "opportunity_scan", scheduledTime: event.scheduledTime, cron: event.cron, mode: env.SCOUT_MODE || "shadow", action: "propose_only", count: opportunities.length, community, outreach, top: opportunities.slice(0, 3) }));
+      const citizenKey = keyResult.status === "fulfilled" ? keyResult.value : { action: "failed", error: String(keyResult.reason) };
+      console.log(JSON.stringify({ event: "opportunity_scan", scheduledTime: event.scheduledTime, cron: event.cron, mode: env.SCOUT_MODE || "shadow", action: "propose_only", count: opportunities.length, community, outreach, citizen_key: citizenKey, top: opportunities.slice(0, 3) }));
     } catch (error) {
       console.error(JSON.stringify({ event: "opportunity_scan_error", message: String(error) }));
     }

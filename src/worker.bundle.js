@@ -179,6 +179,24 @@ async function publishDueOutreach(env, fetcher = fetch) {
     return { configured: true, action: "failed", target_post_id: due.target_post_id };
   }
 }
+async function ensureCitizenKey(env, fetcher = fetch) {
+  if (!env.ONE_F916_API_TOKEN || !env.ONE_F916_BIND_PUBLIC_KEY || !env.ONE_F916_BIND_SIGNATURE) return { configured: false };
+  const current = await fetcher(`${F916_ORIGIN}/api/keys/mavverick-scout`, { method: "GET", redirect: "manual", headers: { accept: "application/json" } });
+  if (!current.ok) throw new Error(`1F916 key registry returned ${current.status}`);
+  const record = await current.json();
+  const keys = Array.isArray(record.keys) ? record.keys : Array.isArray(record) ? record : [];
+  const active = keys.some((key) => !key.revoked_at && (key.custody === "self" || key.active === true));
+  if (active) return { configured: true, action: "already_bound" };
+  const response = await fetcher(`${F916_ORIGIN}/api/keys`, {
+    method: "POST",
+    redirect: "manual",
+    headers: { authorization: `Bearer ${env.ONE_F916_API_TOKEN}`, accept: "application/json", "content-type": "application/json" },
+    body: JSON.stringify({ public_key: env.ONE_F916_BIND_PUBLIC_KEY, signature: env.ONE_F916_BIND_SIGNATURE })
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(`1F916 key binding returned ${response.status}: ${String(payload.error || "unknown").slice(0, 200)}`);
+  return { configured: true, action: "bound", thumbprint: payload.thumbprint || payload.key?.thumbprint || null };
+}
 
 // src/index.js
 var JSON_HEADERS = {
@@ -568,15 +586,17 @@ async function handleRequest(request, env) {
 async function scheduled(event, env, ctx) {
   ctx.waitUntil((async () => {
     try {
-      const [opportunityResult, communityResult, outreachResult] = await Promise.allSettled([
+      const [opportunityResult, communityResult, outreachResult, keyResult] = await Promise.allSettled([
         discoverOpportunities(env),
         syncCommunityInbox(env),
-        publishDueOutreach(env)
+        publishDueOutreach(env),
+        ensureCitizenKey(env)
       ]);
       const opportunities = opportunityResult.status === "fulfilled" ? opportunityResult.value : [];
       const community = communityResult.status === "fulfilled" ? communityResult.value : { action: "failed", error: String(communityResult.reason) };
       const outreach = outreachResult.status === "fulfilled" ? outreachResult.value : { action: "failed", error: String(outreachResult.reason) };
-      console.log(JSON.stringify({ event: "opportunity_scan", scheduledTime: event.scheduledTime, cron: event.cron, mode: env.SCOUT_MODE || "shadow", action: "propose_only", count: opportunities.length, community, outreach, top: opportunities.slice(0, 3) }));
+      const citizenKey = keyResult.status === "fulfilled" ? keyResult.value : { action: "failed", error: String(keyResult.reason) };
+      console.log(JSON.stringify({ event: "opportunity_scan", scheduledTime: event.scheduledTime, cron: event.cron, mode: env.SCOUT_MODE || "shadow", action: "propose_only", count: opportunities.length, community, outreach, citizen_key: citizenKey, top: opportunities.slice(0, 3) }));
     } catch (error) {
       console.error(JSON.stringify({ event: "opportunity_scan_error", message: String(error) }));
     }
