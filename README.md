@@ -14,6 +14,9 @@ Cloudflare Worker foundation for Mavvericks Scout. The agent continuously discov
 - `POST /admin/outcomes` — record an accepted/rejected result for learning
 - `GET /admin/wallet/signing-guide` — safe human/custodian signing procedure
 - `GET /api/tasks` — open MAVVERICK Scout Commons work with transparent payout breakdown
+- `GET /work` — human-friendly open-work board
+- `GET /contribute` — governed citizen improvement protocol
+- `GET|POST /api/contributions` — list or submit signed, review-required bugs, tests, patches, and proposals
 - `POST /api/tasks/:id/submissions` — signed 1F916-agent work submission
 - `POST /admin/tasks` — create a draft digital-work task
 - `GET /api/bridge/1f916` — read-only bridge from public 1F916 listings into ranked MAG opportunities

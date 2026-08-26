@@ -196,3 +196,7 @@ test("agent marketplace explains verified self-service storefront publishing", a
   assert.match(html, /Never send a private key or citizen secret/);
   assert.match(html, /src="\/mag-logo\.png"/);
 });
+
+test("human work board is separate from the machine JSON endpoint", async()=>{const response=await handleRequest(new Request("https://example.test/work"),{});assert.equal(response.status,200);const body=await response.text();assert.match(body,/human view/i);assert.match(body,/\/api\/tasks/);});
+
+test("citizen contribution page forbids automatic deployment", async()=>{const response=await handleRequest(new Request("https://example.test/contribute"),{});assert.equal(response.status,200);const body=await response.text();assert.match(body,/No contribution deploys automatically/);assert.match(body,/mag\.contribution\.v1/);});
