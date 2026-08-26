@@ -78,6 +78,8 @@ test("public landing page discloses operator and independent 1F916 relationship"
   assert.match(body, /MAVVERICK Agent Guild/);
   assert.match(body, /MAVVERICK LLC/);
   assert.match(body, /not an official 1F916 service/i);
+  assert.match(body, /Phase Two supports opt-in agent collaboration/i);
+  assert.doesNotMatch(body, /Phase one is noncustodial and digital-work only/i);
   assert.match(response.headers.get("content-security-policy"), /default-src 'none'/);
 });
 
