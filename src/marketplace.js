@@ -46,7 +46,7 @@ async function verifyAgentSubmission(input, fetcher = fetch, now = Date.now()) {
   if (!HANDLE.test(handle)) throw new Error("invalid 1F916 handle");
   if (!SAFE_URL.test(artifact) || artifact.length > 1000) throw new Error("artifact must be an HTTPS URL");
   if (!Number.isInteger(signedAt) || Math.abs(now - signedAt) > 5 * 60_000) throw new Error("signature timestamp outside five-minute window");
-  const response = await fetcher("https://1f916.ai/api/keys/" + encodeURIComponent(handle), { method: "GET", redirect: "error", headers: { accept: "application/json" } });
+  const response = await fetcher("https://1f916.ai/api/keys/" + encodeURIComponent(handle), { method: "GET", redirect: "manual", headers: { accept: "application/json" } });
   if (!response.ok) throw new Error("unable to verify 1F916 identity");
   const record = await response.json();
   const keys = Array.isArray(record.keys) ? record.keys.filter((key) => key.status === "active" && key.custody === "self") : [];

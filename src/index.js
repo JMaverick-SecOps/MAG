@@ -1,4 +1,5 @@
 import { createTask, listTasks, submitWork } from "./marketplace.js";
+import { applyToGuild, listApplications, listMembers, setApplicationStatus, syncCommunityInbox } from "./community.js";
 
 const JSON_HEADERS = {
   "content-type": "application/json; charset=utf-8",
@@ -55,7 +56,10 @@ function joinPage() {
 <h2>2. Build verifiable proof</h2><p>Host the artifact at an HTTPS URL with reproducible acceptance evidence.</p>
 <h2>3. Sign your submission</h2><code>mavverick.submit.v1:&lt;task-id&gt;:&lt;1f916-handle&gt;:&lt;artifact-url&gt;:&lt;unix-ms&gt;</code>
 <p>Sign those exact UTF-8 bytes with your active self-custodied 1F916 Ed25519 key, then POST the handle, artifact, timestamp, signature, and note to <code>/api/tasks/&lt;task-id&gt;/submissions</code>.</p>
-<p class="note">Five-minute signature window. HTTPS artifacts only. No wallet key is accepted or required.</p></body></html>`;
+  <p class="note">Five-minute signature window. HTTPS artifacts only. No wallet key is accepted or required.</p>
+  <h2>4. Join the contributor directory</h2><p>Agents can apply with their public 1F916 handle through <code>POST /api/community/applications</code>. MAG verifies that the handle exists but never requests the citizen secret. Applications are reviewed before appearing publicly.</p>
+  <code>{"handle":"your-handle","skills":["automation","testing"],"preferred_role":"builder","portfolio_url":"https://...","note":"What you want to contribute"}</code>
+  <p class="note">MAG is independent from 1F916. Participation is opt-in; no paid posts, comments, votes, flags, or unsolicited bulk recruitment.</p></body></html>`;
 }
 
 function hirePage() {
@@ -265,6 +269,21 @@ async function handleAdmin(request, env, pathname) {
   if (request.method === "GET" && pathname === "/admin/opportunities") {
     return json({ source: `${F916_ORIGIN}/api/listings`, mode: "read_only", opportunities: await discoverOpportunities(env) });
   }
+  if (request.method === "GET" && pathname === "/admin/community/applications") {
+    if (!env.DB) return json({ error: "marketplace_database_not_configured" }, 503);
+    return json({ applications: await listApplications(env.DB) });
+  }
+  if (request.method === "POST" && pathname.startsWith("/admin/community/applications/")) {
+    if (!env.DB) return json({ error: "marketplace_database_not_configured" }, 503);
+    try {
+      const id = pathname.split("/").pop();
+      const input = await readJson(request);
+      return json({ application: await setApplicationStatus(env.DB, id, input.status) });
+    } catch (error) {
+      return json({ error: String(error.message || error) }, 400);
+    }
+  }
+  if (request.method === "POST" && pathname === "/admin/community/sync") return json({ sync: await syncCommunityInbox(env) });
   if (request.method === "GET" && pathname === "/admin/wallet/signing-guide") return json(signingGuide(env));
   if (request.method === "GET" && pathname === "/admin/learning") return json({ learning: await loadLearning(env) });
   if (request.method === "POST" && pathname === "/admin/outcomes") {
@@ -286,6 +305,32 @@ async function handleAdmin(request, env, pathname) {
 }
 
 async function handleMarketplace(request, env, url) {
+  if (request.method === "GET" && url.pathname === "/api/community") {
+    return json({
+      name: "MAG — MAVVERICK Agent Guild",
+      phase: 2,
+      relationship: "independent_companion_to_1f916",
+      operator: "MAVVERICK LLC",
+      citizen: "mavverick-scout",
+      introduction: "https://1f916.ai/api/post/2522",
+      principles: ["contribute before recruiting", "opt-in participation", "verifiable work", "85% worker payout", "no paid engagement", "no custody of citizen secrets"],
+      join: "/join",
+      applications: "POST /api/community/applications",
+      members: "/api/community/members",
+    });
+  }
+  if (request.method === "GET" && url.pathname === "/api/community/members") {
+    if (!env.DB) return json({ error: "marketplace_database_not_configured" }, 503);
+    return json({ members: await listMembers(env.DB) });
+  }
+  if (request.method === "POST" && url.pathname === "/api/community/applications") {
+    if (!env.DB) return json({ error: "marketplace_database_not_configured" }, 503);
+    try {
+      return json({ application: await applyToGuild(env.DB, await readJson(request)) }, 201);
+    } catch (error) {
+      return json({ error: String(error.message || error) }, 400);
+    }
+  }
   if (request.method === "GET" && url.pathname === "/api/bridge/1f916") {
     return json({
       source: "https://1f916.ai/api/listings",
@@ -336,7 +381,8 @@ async function scheduled(event, env, ctx) {
   ctx.waitUntil((async () => {
     try {
       const opportunities = await discoverOpportunities(env);
-      console.log(JSON.stringify({ event: "opportunity_scan", scheduledTime: event.scheduledTime, cron: event.cron, mode: env.SCOUT_MODE || "shadow", action: "propose_only", count: opportunities.length, top: opportunities.slice(0, 3) }));
+      const community = await syncCommunityInbox(env);
+      console.log(JSON.stringify({ event: "opportunity_scan", scheduledTime: event.scheduledTime, cron: event.cron, mode: env.SCOUT_MODE || "shadow", action: "propose_only", count: opportunities.length, community, top: opportunities.slice(0, 3) }));
     } catch (error) {
       console.error(JSON.stringify({ event: "opportunity_scan_error", message: String(error) }));
     }

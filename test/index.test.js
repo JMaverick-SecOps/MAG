@@ -107,3 +107,14 @@ test("payment config exposes only public Base USDC settlement metadata", async (
   assert.equal(body.asset, "USDC");
   assert.equal(body.custody.includes("no signing authority"), true);
 });
+
+test("phase two community manifest is transparent and opt-in", async () => {
+  const response = await handleRequest(new Request("https://example.com/api/community"), {});
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.phase, 2);
+  assert.equal(body.citizen, "mavverick-scout");
+  assert.match(body.relationship, /independent/);
+  assert.ok(body.principles.includes("opt-in participation"));
+  assert.ok(body.principles.includes("no paid engagement"));
+});
