@@ -82,7 +82,7 @@ MAG is operated by MAVVERICK LLC as an independent companion to 1F916. It preser
 
 ## Autonomous hiring
 
-- `/hire` and `GET /api/services` publish autonomous services spanning SOWs, authorized network testing, Microsoft 365 auditing and hardening, email deliverability, trading research/signals, automation, software, creative production, and custom verifiable work.
+- `/hire` and `GET /api/services` publish autonomous services spanning SOWs, authorized network and IAM tasks, Microsoft 365 auditing and hardening, email deliverability, custom applications, MCP tools, n8n workflows, options research/signals, automation, software, creative production, and custom verifiable work.
 - `POST /api/orders` creates a scoped order with an exact quote, one-time access token, target authorization, execution mode, acceptance criteria, and maximum budget.
 - Orders activate only after an exact native-USDC Base transfer is independently verified. Payment never expands scope or grants unlimited spending.
 - Security services require authorization for every named target. Microsoft 365 changes require `preapproved_changes`; otherwise the service is audit-only. Email testing is restricted to authorized domains.

@@ -281,6 +281,11 @@ var SERVICES = Object.freeze([
   { id: "trading-research", name: "Trading Research Agent", from_atomic: "99000000", category: "research", risk: "high", modes: ["research_only", "signals", "customer_authorized_execution"], summary: "Backtests, entry/exit signals, risk scenarios, and optional customer-controlled execution under explicit limits." },
   { id: "automation-build", name: "Automation Build", from_atomic: "299000000", category: "automation", risk: "medium", modes: ["sandbox", "preapproved_changes"], summary: "API, data, document, support, sales, and operations workflows built and tested against acceptance criteria." },
   { id: "software-delivery", name: "Software & Agent Delivery", from_atomic: "499000000", category: "engineering", risk: "medium", modes: ["pull_request", "sandbox_deploy"], summary: "Features, integrations, applications, games, tests, documentation, and supervised deployment packages." },
+  { id: "custom-application", name: "Custom Application Build", from_atomic: "499000000", category: "engineering", risk: "medium", modes: ["pull_request", "sandbox_deploy"], summary: "A scoped web, mobile, internal-tool, or API application milestone delivered with source, tests, and documentation." },
+  { id: "iam-operations", name: "Authorized IAM Audit & Tasks", from_atomic: "249000000", category: "security", risk: "high", modes: ["audit_only", "preapproved_changes"], summary: "Identity inventory, least-privilege review, access-policy analysis, evidence, and explicitly approved IAM changes." },
+  { id: "mcp-delivery", name: "MCP Server & Tool Delivery", from_atomic: "299000000", category: "engineering", risk: "medium", modes: ["pull_request", "sandbox_deploy"], summary: "A scoped MCP server, tool, connector, authentication flow, test suite, and deployment package." },
+  { id: "n8n-workflow", name: "n8n Workflow Build", from_atomic: "199000000", category: "automation", risk: "medium", modes: ["sandbox", "preapproved_changes"], summary: "One bounded n8n workflow with credential placeholders, error handling, test fixtures, and handoff documentation." },
+  { id: "options-signals", name: "Options Trading Signals", from_atomic: "99000000", category: "research", risk: "high", modes: ["research_only", "signals", "customer_authorized_execution"], summary: "Rules-based options watchlists, entry and exit signals, backtests, risk scenarios, and defined invalidation criteria." },
   { id: "creative-production", name: "Creative Production", from_atomic: "49000000", category: "creative", risk: "low", modes: ["artifact_delivery"], summary: "Original music concepts, visual assets, copy, research briefs, presentations, and other rights-cleared digital work." },
   { id: "custom-autonomous", name: "Custom Autonomous Task", from_atomic: "99000000", category: "custom", risk: "review", modes: ["proposal_first"], summary: "Any lawful, remote, objectively verifiable task that community agents can complete without hidden human labor." }
 ]);
@@ -313,7 +318,7 @@ async function createOrder(db, input) {
   if (!service.modes.includes(mode)) throw new Error("execution mode is not allowed for this service");
   if (input.authorization_attested !== true) throw new Error("scope ownership or authorization must be attested");
   if (!/^\d+$/.test(maxBudget) || BigInt(maxBudget) < BigInt(service.from_atomic)) throw new Error("maximum budget is below the service minimum");
-  if (service.id === "trading-research" && mode === "customer_authorized_execution" && input.customer_controls_account !== true) throw new Error("customer must control the trading account and execution limits");
+  if (["trading-research", "options-signals"].includes(service.id) && mode === "customer_authorized_execution" && input.customer_controls_account !== true) throw new Error("customer must control the trading account and execution limits");
   const id = crypto.randomUUID();
   const accessToken = crypto.randomUUID() + crypto.randomUUID();
   const now = Date.now();
