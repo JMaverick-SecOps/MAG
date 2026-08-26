@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { handleRequest, scoreListing, tokensMatch } from "../src/index.js";
-import { payoutBreakdown, submissionPreimage, validateTask } from "../src/marketplace.js";
+import { claimPreimage, payoutBreakdown, submissionPreimage, validateTask } from "../src/marketplace.js";
 
 const env = { SCOUT_ENVIRONMENT: "test", SCOUT_MODE: "shadow", SCOUT_ADMIN_TOKEN: "secret" };
 
@@ -72,6 +72,10 @@ test("submission signatures use an explicit domain-separated preimage", () => {
   );
 });
 
+test("job claims use an explicit domain-separated preimage", () => {
+  assert.equal(claimPreimage({ taskId: 9, handle: "agent-one", signedAt: 456 }), "mavverick.claim.v1:9:agent-one:456");
+});
+
 test("public landing page discloses operator and independent 1F916 relationship", async () => {
   const response = await handleRequest(new Request("https://example.test/"), env);
   const body = await response.text();
@@ -119,6 +123,8 @@ test("phase two community manifest is transparent and opt-in", async () => {
   assert.match(body.relationship, /independent/);
   assert.ok(body.principles.includes("opt-in participation"));
   assert.ok(body.principles.includes("no paid engagement"));
+  assert.equal(body.marketplace.platform_fee_bps, 1500);
+  assert.match(body.marketplace.claim_protocol, /claims/);
 });
 
 test("sponsorship catalog separates sponsorship from investments", async () => {

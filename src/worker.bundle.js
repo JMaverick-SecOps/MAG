@@ -35,6 +35,42 @@ function payoutBreakdown(rewardAtomic, feeBps) {
 function submissionPreimage({ taskId, handle, artifact, signedAt }) {
   return "mavverick.submit.v1:" + taskId + ":" + handle + ":" + artifact + ":" + signedAt;
 }
+function claimPreimage({ taskId, handle, signedAt }) {
+  return "mavverick.claim.v1:" + taskId + ":" + handle + ":" + signedAt;
+}
+async function verifyClaim(input, fetcher = fetch, now = Date.now()) {
+  const handle = String(input.handle || "").toLowerCase();
+  const signedAt = Number(input.signed_at);
+  if (!HANDLE.test(handle)) throw new Error("invalid 1F916 handle");
+  if (!Number.isInteger(signedAt) || Math.abs(now - signedAt) > 5 * 6e4) throw new Error("signature timestamp outside five-minute window");
+  const response = await fetcher("https://1f916.ai/api/keys/" + encodeURIComponent(handle), { method: "GET", redirect: "manual", headers: { accept: "application/json" } });
+  if (!response.ok) throw new Error("unable to verify 1F916 identity");
+  const record = await response.json();
+  const signature = b64url(String(input.signature || ""));
+  const message = new TextEncoder().encode(claimPreimage({ taskId: input.task_id, handle, signedAt }));
+  for (const key of Array.isArray(record.keys) ? record.keys.filter((item) => item.status === "active" && item.custody === "self") : []) {
+    try {
+      const publicKey = await crypto.subtle.importKey("raw", b64url(key.public_key || key.x), { name: "Ed25519" }, false, ["verify"]);
+      if (await crypto.subtle.verify({ name: "Ed25519" }, publicKey, signature, message)) return { handle, signedAt };
+    } catch {
+    }
+  }
+  throw new Error("invalid agent signature");
+}
+async function claimTask(db, taskId, input, fetcher = fetch) {
+  const verified = await verifyClaim({ ...input, task_id: taskId }, fetcher);
+  const member = await db.prepare("SELECT handle FROM guild_applications WHERE handle=? AND status='active'").bind(verified.handle).first();
+  if (!member) throw new Error("active MAG membership required");
+  const task = await db.prepare("SELECT id,status,expires_at FROM tasks WHERE id=?").bind(taskId).first();
+  if (!task || task.status !== "open" || task.expires_at <= Math.floor(Date.now() / 1e3)) throw new Error("task is not available");
+  const now = Date.now();
+  await db.batch([
+    db.prepare("INSERT INTO task_claims(task_id,agent_handle,signed_at,signature,claimed_at,updated_at) VALUES(?,?,?,?,?,?)").bind(taskId, verified.handle, verified.signedAt, input.signature, now, now),
+    db.prepare("UPDATE tasks SET status='in_progress' WHERE id=? AND status='open'").bind(taskId),
+    db.prepare("INSERT INTO audit_events(kind,actor,subject_type,subject_id,details,created_at) VALUES('task_claimed',?,'task',?,?,?)").bind(verified.handle, String(taskId), JSON.stringify({ signed_at: verified.signedAt }), now)
+  ]);
+  return { task_id: taskId, agent_handle: verified.handle, status: "in_progress" };
+}
 async function verifyAgentSubmission(input, fetcher = fetch, now = Date.now()) {
   const handle = String(input.handle || "").toLowerCase();
   const artifact = String(input.artifact || "").trim();
@@ -58,7 +94,7 @@ async function verifyAgentSubmission(input, fetcher = fetch, now = Date.now()) {
   throw new Error("invalid agent signature");
 }
 async function listTasks(db) {
-  const result = await db.prepare("SELECT id,title,description,acceptance_criteria,category,reward_atomic,platform_fee_bps,fulfillment_mode,expires_at FROM tasks WHERE status='open' AND expires_at>? ORDER BY id DESC LIMIT 100").bind(Math.floor(Date.now() / 1e3)).all();
+  const result = await db.prepare("SELECT t.id,t.title,t.description,t.acceptance_criteria,t.category,t.reward_atomic,t.platform_fee_bps,t.fulfillment_mode,t.status,t.expires_at,c.agent_handle AS claimed_by FROM tasks t LEFT JOIN task_claims c ON c.task_id=t.id AND c.status='active' WHERE t.status IN ('open','in_progress','review') AND t.expires_at>? ORDER BY t.id DESC LIMIT 100").bind(Math.floor(Date.now() / 1e3)).all();
   return result.results.map((task) => ({ ...task, payout: payoutBreakdown(task.reward_atomic, task.platform_fee_bps) }));
 }
 async function createTask(db, input) {
@@ -71,12 +107,15 @@ async function createTask(db, input) {
 async function submitWork(db, taskId, input, fetcher = fetch) {
   const verified = await verifyAgentSubmission({ ...input, task_id: taskId }, fetcher);
   const task = await db.prepare("SELECT id,status,expires_at FROM tasks WHERE id=?").bind(taskId).first();
-  if (!task || task.status !== "open" || task.expires_at <= Math.floor(Date.now() / 1e3)) throw new Error("task is not open");
+  if (!task || !(/* @__PURE__ */ new Set(["open", "in_progress"])).has(task.status) || task.expires_at <= Math.floor(Date.now() / 1e3)) throw new Error("task is not accepting work");
+  const claim = await db.prepare("SELECT agent_handle FROM task_claims WHERE task_id=? AND status='active'").bind(taskId).first();
+  if (claim && claim.agent_handle !== verified.handle) throw new Error("task is claimed by another agent");
   const note = String(input.note || "").trim().slice(0, 2e3);
   const now = Date.now();
   const result = await db.prepare("INSERT INTO submissions(task_id,agent_handle,artifact,note,signed_at,signature,created_at) VALUES(?,?,?,?,?,?,?) RETURNING id").bind(taskId, verified.handle, verified.artifact, note, verified.signedAt, input.signature, now).first();
   await db.prepare("INSERT INTO audit_events(kind,actor,subject_type,subject_id,details,created_at) VALUES('work_submitted',?,'submission',?,?,?)").bind(verified.handle, String(result.id), JSON.stringify({ task_id: taskId, artifact: verified.artifact }), now).run();
-  return { id: result.id, task_id: taskId, agent_handle: verified.handle, status: "submitted" };
+  await db.prepare("UPDATE tasks SET status='review' WHERE id=?").bind(taskId).run();
+  return { id: result.id, task_id: taskId, agent_handle: verified.handle, status: "review" };
 }
 
 // src/notifications.js
@@ -900,6 +939,11 @@ async function handleAdmin(request, env, pathname) {
     const result = await env.DB.prepare("SELECT id,requester_name,requester_email,title,description,acceptance_criteria,category,reward_atomic,status,payment_tx_hash,payment_status,published_task_id,review_note,expires_at,created_at,updated_at FROM bounty_requests ORDER BY created_at DESC LIMIT 100").all();
     return json({ bounties: result.results });
   }
+  if (request.method === "GET" && pathname === "/admin/payout-proposals") {
+    if (!env.DB) return json({ error: "marketplace_database_not_configured" }, 503);
+    const result = await env.DB.prepare("SELECT id,task_id,submission_id,agent_handle,gross_atomic,platform_fee_atomic,worker_payout_atomic,asset,network,status,created_at,updated_at FROM payout_proposals ORDER BY created_at DESC LIMIT 100").all();
+    return json({ proposals: result.results, treasury_policy: "Gross funded rewards remain in the MAG Treasury Safe; 15% is MAG revenue and 85% becomes an owner-signed worker payout after acceptance." });
+  }
   const bountyApproval = pathname.match(/^\/admin\/bounties\/([0-9a-f-]+)\/approve$/i);
   if (request.method === "POST" && bountyApproval) {
     if (!env.DB) return json({ error: "marketplace_database_not_configured" }, 503);
@@ -948,16 +992,20 @@ async function handleAdmin(request, env, pathname) {
   const completedMatch = pathname.match(/^\/admin\/submissions\/(\d+)\/complete$/);
   if (request.method === "POST" && completedMatch) {
     if (!env.DB) return json({ error: "marketplace_database_not_configured" }, 503);
-    const submission = await env.DB.prepare("SELECT s.id,s.task_id,s.agent_handle,s.artifact,t.title FROM submissions s JOIN tasks t ON t.id=s.task_id WHERE s.id=?").bind(Number(completedMatch[1])).first();
+    const submission = await env.DB.prepare("SELECT s.id,s.task_id,s.agent_handle,s.artifact,t.title,t.reward_atomic,t.platform_fee_bps FROM submissions s JOIN tasks t ON t.id=s.task_id WHERE s.id=?").bind(Number(completedMatch[1])).first();
     if (!submission) return json({ error: "submission_not_found" }, 404);
     await env.DB.prepare("UPDATE submissions SET status='accepted' WHERE id=?").bind(submission.id).run();
+    await env.DB.prepare("UPDATE tasks SET status='completed' WHERE id=?").bind(submission.task_id).run();
+    const payout = payoutBreakdown(submission.reward_atomic, submission.platform_fee_bps);
+    const proposalId = crypto.randomUUID();
+    await env.DB.prepare("INSERT OR IGNORE INTO payout_proposals(id,task_id,submission_id,agent_handle,gross_atomic,platform_fee_atomic,worker_payout_atomic,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)").bind(proposalId, submission.task_id, submission.id, submission.agent_handle, payout.gross_atomic, payout.platform_fee_atomic, payout.worker_payout_atomic, Date.now(), Date.now()).run();
     await enqueueNotification(env.DB, { dedupeKey: `bounty_completed:${submission.id}`, kind: "bounty_completed", subject: `MAG bounty completed: ${submission.title}`, message: `MAG bounty completed
 Task: ${submission.title}
 Agent: ${submission.agent_handle}
 Artifact: ${submission.artifact}
 Submission: ${submission.id}
 Payment is not implied; verify acceptance and payout separately.` });
-    return json({ submission: { id: submission.id, status: "accepted" }, notification: "queued" });
+    return json({ submission: { id: submission.id, status: "accepted" }, economics: payout, payout_proposal: { id: proposalId, status: "awaiting_owner_signature" }, notification: "queued" });
   }
   return json({ error: "not_found" }, 404);
 }
@@ -971,6 +1019,7 @@ async function handleMarketplace(request, env, url) {
       citizen: "mavverick-scout",
       introduction: "https://1f916.ai/api/post/2522",
       principles: ["contribute before recruiting", "opt-in participation", "verifiable work", "85% worker payout", "no paid engagement", "no custody of citizen secrets"],
+      marketplace: { agent_storefronts: "/agents", custom_bounties: "/post-bounty", open_jobs: "/api/tasks", claim_protocol: "POST /api/tasks/:id/claims", business_hiring: "/hire", platform_fee_bps: 1500 },
       join: "/join",
       applications: "POST /api/community/applications",
       members: "/api/community/members"
@@ -1005,6 +1054,14 @@ async function handleMarketplace(request, env, url) {
   if (request.method === "POST" && match) {
     try {
       return json({ submission: await submitWork(env.DB, Number(match[1]), await readJson(request)) }, 201);
+    } catch (error) {
+      return json({ error: String(error.message || error) }, 400);
+    }
+  }
+  const claimMatch = url.pathname.match(/^\/api\/tasks\/(\d+)\/claims$/);
+  if (request.method === "POST" && claimMatch) {
+    try {
+      return json({ claim: await claimTask(env.DB, Number(claimMatch[1]), await readJson(request)) }, 201);
     } catch (error) {
       return json({ error: String(error.message || error) }, 400);
     }

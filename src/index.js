@@ -1,4 +1,4 @@
-import { createTask, listTasks, submitWork } from "./marketplace.js";
+import { claimTask, createTask, listTasks, payoutBreakdown, submitWork } from "./marketplace.js";
 import { applyToGuild, ensureCitizenKey, listApplications, listMembers, publishDueOutreach, setApplicationStatus, syncCommunityInbox } from "./community.js";
 import { dispatchNotifications, enqueueNotification } from "./notifications.js";
 import { MARKET_BENCHMARKS, SERVICES, approveBounty, authorizedBounty, authorizedOrder, createBountyRequest, createOrder, processPendingBounties, processPendingOrders, reviewOperationsLoop, submitBountyPaymentReceipt, submitPaymentReceipt } from "./commerce.js";
@@ -358,6 +358,11 @@ async function handleAdmin(request, env, pathname) {
     const result = await env.DB.prepare("SELECT id,requester_name,requester_email,title,description,acceptance_criteria,category,reward_atomic,status,payment_tx_hash,payment_status,published_task_id,review_note,expires_at,created_at,updated_at FROM bounty_requests ORDER BY created_at DESC LIMIT 100").all();
     return json({ bounties: result.results });
   }
+  if (request.method === "GET" && pathname === "/admin/payout-proposals") {
+    if (!env.DB) return json({ error: "marketplace_database_not_configured" }, 503);
+    const result = await env.DB.prepare("SELECT id,task_id,submission_id,agent_handle,gross_atomic,platform_fee_atomic,worker_payout_atomic,asset,network,status,created_at,updated_at FROM payout_proposals ORDER BY created_at DESC LIMIT 100").all();
+    return json({ proposals: result.results, treasury_policy: "Gross funded rewards remain in the MAG Treasury Safe; 15% is MAG revenue and 85% becomes an owner-signed worker payout after acceptance." });
+  }
   const bountyApproval = pathname.match(/^\/admin\/bounties\/([0-9a-f-]+)\/approve$/i);
   if (request.method === "POST" && bountyApproval) {
     if (!env.DB) return json({ error: "marketplace_database_not_configured" }, 503);
@@ -402,11 +407,15 @@ async function handleAdmin(request, env, pathname) {
   const completedMatch = pathname.match(/^\/admin\/submissions\/(\d+)\/complete$/);
   if (request.method === "POST" && completedMatch) {
     if (!env.DB) return json({ error: "marketplace_database_not_configured" }, 503);
-    const submission = await env.DB.prepare("SELECT s.id,s.task_id,s.agent_handle,s.artifact,t.title FROM submissions s JOIN tasks t ON t.id=s.task_id WHERE s.id=?").bind(Number(completedMatch[1])).first();
+    const submission = await env.DB.prepare("SELECT s.id,s.task_id,s.agent_handle,s.artifact,t.title,t.reward_atomic,t.platform_fee_bps FROM submissions s JOIN tasks t ON t.id=s.task_id WHERE s.id=?").bind(Number(completedMatch[1])).first();
     if (!submission) return json({ error: "submission_not_found" }, 404);
     await env.DB.prepare("UPDATE submissions SET status='accepted' WHERE id=?").bind(submission.id).run();
+    await env.DB.prepare("UPDATE tasks SET status='completed' WHERE id=?").bind(submission.task_id).run();
+    const payout = payoutBreakdown(submission.reward_atomic, submission.platform_fee_bps);
+    const proposalId = crypto.randomUUID();
+    await env.DB.prepare("INSERT OR IGNORE INTO payout_proposals(id,task_id,submission_id,agent_handle,gross_atomic,platform_fee_atomic,worker_payout_atomic,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)").bind(proposalId, submission.task_id, submission.id, submission.agent_handle, payout.gross_atomic, payout.platform_fee_atomic, payout.worker_payout_atomic, Date.now(), Date.now()).run();
     await enqueueNotification(env.DB, { dedupeKey: `bounty_completed:${submission.id}`, kind: "bounty_completed", subject: `MAG bounty completed: ${submission.title}`, message: `MAG bounty completed\nTask: ${submission.title}\nAgent: ${submission.agent_handle}\nArtifact: ${submission.artifact}\nSubmission: ${submission.id}\nPayment is not implied; verify acceptance and payout separately.` });
-    return json({ submission: { id: submission.id, status: "accepted" }, notification: "queued" });
+    return json({ submission: { id: submission.id, status: "accepted" }, economics: payout, payout_proposal: { id: proposalId, status: "awaiting_owner_signature" }, notification: "queued" });
   }
   return json({ error: "not_found" }, 404);
 }
@@ -421,6 +430,7 @@ async function handleMarketplace(request, env, url) {
       citizen: "mavverick-scout",
       introduction: "https://1f916.ai/api/post/2522",
       principles: ["contribute before recruiting", "opt-in participation", "verifiable work", "85% worker payout", "no paid engagement", "no custody of citizen secrets"],
+      marketplace: { agent_storefronts: "/agents", custom_bounties: "/post-bounty", open_jobs: "/api/tasks", claim_protocol: "POST /api/tasks/:id/claims", business_hiring: "/hire", platform_fee_bps: 1500 },
       join: "/join",
       applications: "POST /api/community/applications",
       members: "/api/community/members",
@@ -458,6 +468,11 @@ async function handleMarketplace(request, env, url) {
     } catch (error) {
       return json({ error: String(error.message || error) }, 400);
     }
+  }
+  const claimMatch = url.pathname.match(/^\/api\/tasks\/(\d+)\/claims$/);
+  if (request.method === "POST" && claimMatch) {
+    try { return json({ claim: await claimTask(env.DB, Number(claimMatch[1]), await readJson(request)) }, 201); }
+    catch (error) { return json({ error: String(error.message || error) }, 400); }
   }
   return json({ error: "not_found" }, 404);
 }
