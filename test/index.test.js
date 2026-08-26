@@ -168,3 +168,13 @@ test("autonomous service catalog enforces bounded purchasing", async () => {
   assert.ok(body.prohibited.includes("unauthorized access"));
   assert.ok(body.prohibited.includes("unbounded spending"));
 });
+
+test("custom bounty page publishes funding and moderation boundaries", async () => {
+  const response = await handleRequest(new Request("https://example.test/post-bounty"), {});
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /Post a custom agent bounty/);
+  assert.match(html, /MAG retains 15%; 85%/);
+  assert.match(html, /passes review/);
+  assert.match(html, /at least \$5 USDC/);
+});

@@ -55,6 +55,7 @@ const SERVICES = Object.freeze([
 
 const HEX_TX = /^0x[a-fA-F0-9]{64}$/;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const BOUNTY_CATEGORIES = new Set(["automation", "engineering", "research", "sow", "music", "art", "game-development", "operations", "security", "support"]);
 const BASE_USDC = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913";
 const TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
 const BASE_RPCS = ["https://mainnet.base.org", "https://base-rpc.publicnode.com"];
@@ -107,6 +108,46 @@ async function submitPaymentReceipt(db, id, token, input) {
   return { id, status: "payment_review", payment_status: "pending_verification" };
 }
 
+async function createBountyRequest(db, input) {
+  const requesterName = clean(input.requester_name, 100);
+  const requesterEmail = clean(input.requester_email, 254).toLowerCase();
+  const title = clean(input.title, 160);
+  const description = clean(input.description, 8000);
+  const acceptance = clean(input.acceptance_criteria, 4000);
+  const category = clean(input.category, 40).toLowerCase();
+  const reward = String(input.reward_atomic || "");
+  const expiresAt = Number(input.expires_at);
+  if (requesterName.length < 2 || !EMAIL.test(requesterEmail)) throw new Error("valid requester name and email required");
+  if (title.length < 8 || description.length < 30 || acceptance.length < 30) throw new Error("clear title, description, and objective acceptance criteria required");
+  if (!BOUNTY_CATEGORIES.has(category)) throw new Error("unsupported category");
+  if (!/^\d+$/.test(reward) || BigInt(reward) < 5000000n) throw new Error("custom bounty must be at least 5 USDC");
+  if (!Number.isInteger(expiresAt) || expiresAt < Math.floor(Date.now() / 1000) + 86400) throw new Error("expiry must be at least one day away");
+  if (input.authorization_attested !== true) throw new Error("lawful scope and authorization must be attested");
+  const id = crypto.randomUUID();
+  const accessToken = crypto.randomUUID() + crypto.randomUUID();
+  const now = Date.now();
+  await db.prepare("INSERT INTO bounty_requests(id,access_token_hash,requester_name,requester_email,title,description,acceptance_criteria,category,reward_atomic,authorization_attested,expires_at,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,1,?,?,?)")
+    .bind(id, await sha256(accessToken), requesterName, requesterEmail, title, description, acceptance, category, reward, expiresAt, now, now).run();
+  return { id, access_token: accessToken, status: "awaiting_payment", reward_atomic: reward, platform_fee_bps: 1500, worker_payout_atomic: (BigInt(reward) * 8500n / 10000n).toString(), warning: "Save access_token. Funding does not publish the bounty; MAG reviews authorization, safety, and objective verifiability first." };
+}
+
+async function authorizedBounty(db, id, token) {
+  const bounty = await db.prepare("SELECT * FROM bounty_requests WHERE id=?").bind(id).first();
+  if (!bounty || !token || await sha256(token) !== bounty.access_token_hash) return null;
+  delete bounty.access_token_hash;
+  return bounty;
+}
+
+async function submitBountyPaymentReceipt(db, id, token, input) {
+  const bounty = await authorizedBounty(db, id, token);
+  if (!bounty) throw new Error("bounty not found or unauthorized");
+  const txHash = clean(input.tx_hash, 66).toLowerCase();
+  if (!HEX_TX.test(txHash)) throw new Error("valid Base transaction hash required");
+  if (bounty.payment_status !== "unsubmitted") throw new Error("payment receipt already submitted");
+  await db.prepare("UPDATE bounty_requests SET payment_tx_hash=?,payment_status='pending_verification',status='payment_review',updated_at=? WHERE id=?").bind(txHash, Date.now(), id).run();
+  return { id, status: "payment_review", payment_status: "pending_verification" };
+}
+
 async function rpc(url, method, params, fetcher) {
   const response = await fetcher(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }) });
   if (!response.ok) throw new Error(`Base RPC returned ${response.status}`);
@@ -154,4 +195,45 @@ async function processPendingOrders(env, fetcher = fetch) {
   return { configured: true, checked: (pending.results || []).length, verified };
 }
 
-export { MARKET_BENCHMARKS, SERVICES, authorizedOrder, createOrder, processPendingOrders, serviceById, submitPaymentReceipt };
+async function processPendingBounties(env, fetcher = fetch) {
+  if (!env.DB || !/^0x[a-fA-F0-9]{40}$/.test(env.TREASURY_WALLET_ADDRESS || "")) return { configured: false, checked: 0, verified: 0 };
+  const pending = await env.DB.prepare("SELECT id,reward_atomic,payment_tx_hash FROM bounty_requests WHERE payment_status='pending_verification' ORDER BY updated_at LIMIT 10").all();
+  let verified = 0;
+  for (const bounty of pending.results || []) {
+    try {
+      const observations = await Promise.all(BASE_RPCS.map(async (url) => ({ receipt: await rpc(url, "eth_getTransactionReceipt", [bounty.payment_tx_hash], fetcher), head: await rpc(url, "eth_blockNumber", [], fetcher) })));
+      if (observations.some(({ receipt }) => !receipt)) continue;
+      const [first, second] = observations;
+      if (first.receipt.blockHash !== second.receipt.blockHash || observations.some(({ receipt }) => receipt.status !== "0x1")) continue;
+      const block = BigInt(first.receipt.blockNumber);
+      if (observations.some(({ head }) => BigInt(head) - block < 12n)) continue;
+      if (!observations.every(({ receipt }) => paidExactly(receipt, env.TREASURY_WALLET_ADDRESS, bounty.reward_atomic))) continue;
+      await env.DB.prepare("UPDATE bounty_requests SET payment_status='verified',status='ready_for_review',updated_at=? WHERE id=? AND payment_status='pending_verification'").bind(Date.now(), bounty.id).run();
+      verified += 1;
+    } catch (error) { console.warn(JSON.stringify({ event: "bounty_payment_verification_deferred", bounty_id: bounty.id, message: String(error.message || error) })); }
+  }
+  return { configured: true, checked: (pending.results || []).length, verified };
+}
+
+async function approveBounty(db, id, reviewNote = "") {
+  const bounty = await db.prepare("SELECT * FROM bounty_requests WHERE id=?").bind(id).first();
+  if (!bounty || bounty.status !== "ready_for_review" || bounty.payment_status !== "verified") throw new Error("verified bounty is not ready for review");
+  const now = Date.now();
+  const task = await db.prepare("INSERT INTO tasks(title,description,acceptance_criteria,category,reward_atomic,platform_fee_bps,status,fulfillment_mode,created_at,expires_at) VALUES(?,?,?,?,?,1500,'open','digital',?,?) RETURNING id")
+    .bind(bounty.title, bounty.description, bounty.acceptance_criteria, bounty.category, bounty.reward_atomic, now, bounty.expires_at).first();
+  await db.prepare("UPDATE bounty_requests SET status='published',published_task_id=?,review_note=?,updated_at=? WHERE id=?").bind(task.id, clean(reviewNote, 1000), now, id).run();
+  await db.prepare("INSERT INTO audit_events(kind,actor,subject_type,subject_id,details,created_at) VALUES('custom_bounty_published','operator','task',?,?,?)").bind(String(task.id), JSON.stringify({ bounty_request_id: id, funding_verified: true }), now).run();
+  return { id, status: "published", task_id: task.id };
+}
+
+async function reviewOperationsLoop(env) {
+  if (!env.DB) return { configured: false };
+  const windowStart = Math.floor(Date.now() / 900000) * 900000;
+  const counts = {};
+  for (const [key, sql] of Object.entries({ pending_bounties: "SELECT COUNT(*) n FROM bounty_requests WHERE status IN ('payment_review','ready_for_review')", open_tasks: "SELECT COUNT(*) n FROM tasks WHERE status='open'", new_inbox: "SELECT COUNT(*) n FROM community_inbox WHERE status='new'", pending_members: "SELECT COUNT(*) n FROM guild_applications WHERE status='pending'" })) counts[key] = Number((await env.DB.prepare(sql).first())?.n || 0);
+  const signalKind = Object.values(counts).some(Boolean) ? "operational_signal" : "no_new_signal";
+  await env.DB.prepare("INSERT OR IGNORE INTO operations_observations(window_start,signal_kind,details,created_at) VALUES(?,?,?,?)").bind(windowStart, signalKind, JSON.stringify(counts), Date.now()).run();
+  return { configured: true, signal_kind: signalKind, counts };
+}
+
+export { MARKET_BENCHMARKS, SERVICES, approveBounty, authorizedBounty, authorizedOrder, createBountyRequest, createOrder, processPendingBounties, processPendingOrders, reviewOperationsLoop, serviceById, submitBountyPaymentReceipt, submitPaymentReceipt };

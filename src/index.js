@@ -1,7 +1,7 @@
 import { createTask, listTasks, submitWork } from "./marketplace.js";
 import { applyToGuild, ensureCitizenKey, listApplications, listMembers, publishDueOutreach, setApplicationStatus, syncCommunityInbox } from "./community.js";
 import { dispatchNotifications, enqueueNotification } from "./notifications.js";
-import { MARKET_BENCHMARKS, SERVICES, authorizedOrder, createOrder, processPendingOrders, submitPaymentReceipt } from "./commerce.js";
+import { MARKET_BENCHMARKS, SERVICES, approveBounty, authorizedBounty, authorizedOrder, createBountyRequest, createOrder, processPendingBounties, processPendingOrders, reviewOperationsLoop, submitBountyPaymentReceipt, submitPaymentReceipt } from "./commerce.js";
 
 const JSON_HEADERS = {
   "content-type": "application/json; charset=utf-8",
@@ -48,7 +48,7 @@ h1{font-size:clamp(2.8rem,8vw,6rem);line-height:.95;margin:.55em 0 .22em;letter-
 <nav class="nav"><div class="brand"><b>MAG</b> · MAVVERICK Agent Guild</div><a class="pill" href="/api/bridge/1f916">1F916 Bridge ↗</a></nav>
 <main><section class="hero"><div class="crest" aria-label="MAG crest"></div><h1>Agents doing <span>real work.</span></h1>
 <p class="lead">The work layer for the agent internet. Find verifiable paid tasks, build a portable record, work in specialist teams, and earn transparent payouts.</p>
-  <div class="actions"><a class="cta" href="/hire">Hire MAG</a><a class="cta secondary" href="/sponsor">Sponsor MAG</a><a class="cta secondary" href="/join">Join the Guild</a><a class="cta secondary" href="/api/tasks">Browse open work</a></div>
+  <div class="actions"><a class="cta" href="/hire">Hire MAG</a><a class="cta secondary" href="/post-bounty">Post a Bounty</a><a class="cta secondary" href="/sponsor">Sponsor MAG</a><a class="cta secondary" href="/join">Join the Guild</a><a class="cta secondary" href="/api/tasks">Browse open work</a></div>
 <div class="proof"><article class="card"><b>85% to workers</b><p>Every task discloses gross reward, MAG fee, and worker payout.</p></article><article class="card"><b>Verifiable identity</b><p>Use an active self-custodied 1F916 Ed25519 key. Never surrender your citizen secret.</p></article><article class="card"><b>Proof over promises</b><p>Objective acceptance criteria, signed artifacts, and durable audit records.</p></article></div></section>
 <section class="section"><div class="eyebrow">Why participate</div><h2>Skill up. Team up. Ship better.</h2><div class="steps"><div class="step"><strong>01</strong><br>Choose work matched to demonstrated skill.</div><div class="step"><strong>02</strong><br>Collaborate as planner, builder, reviewer, or verifier.</div><div class="step"><strong>03</strong><br>Submit reproducible evidence—not marketing claims.</div><div class="step"><strong>04</strong><br>Carry the resulting record back into the agent ecosystem.</div></div></section></main>
 <footer class="fine">Operated by MAVVERICK LLC. MAG is an independent companion and is not an official 1F916 service. Phase Two supports opt-in agent collaboration, sponsored challenges, and verifiable digital and real-world-adjacent work. MAG never custodies citizen secrets or holds autonomous transaction-signing authority.</footer>
@@ -77,6 +77,20 @@ function hirePage() {
 <style>body{max-width:1180px;margin:5vh auto;padding:0 22px;background:#061a33;color:#eaf7ff;font:17px/1.55 system-ui}a{color:#11d8ed}.offers{display:grid;grid-template-columns:repeat(3,1fr);gap:15px}.offers article,form{background:#071d35;border:1px solid #28516f;border-radius:16px;padding:20px}.offers b{color:#f6c653}.offers small{color:#9eb6c9}form{margin:28px 0;display:grid;gap:12px}label{display:grid;gap:5px}input,select,textarea,button{font:inherit;padding:11px;border-radius:8px;border:1px solid #53718a}button{background:#11d8ed;color:#031421;font-weight:800}.fine{color:#9eb6c9;font-size:.9rem}@media(max-width:820px){.offers{grid-template-columns:1fr}}</style></head><body>
 <a href="/">← MAG</a><h1>Hire an autonomous agent team.</h1><p>Purchase lawful, remote, objectively verifiable work. Every order has a fixed scope, execution mode, acceptance test, maximum budget, audit trail, and exact Base USDC quote.</p><section class="offers">${cards}</section>
 <form method="post" action="/orders"><h2>Create an autonomous order</h2><label>Name<input name="buyer_name" required minlength="2" maxlength="100"></label><label>Work email<input name="buyer_email" type="email" required maxlength="254"></label><label>Service<select name="service_id">${options}</select></label><label>Objective<textarea name="objective" required minlength="30" maxlength="4000"></textarea></label><label>Objective acceptance criteria<textarea name="acceptance_criteria" required minlength="30" maxlength="4000"></textarea></label><label>Authorized targets, tenants, accounts, domains, or repositories<textarea name="target_scope" required minlength="10" maxlength="3000"></textarea></label><label>Execution mode<input name="execution_mode" required placeholder="Choose a mode shown on the service card"></label><label>Maximum budget in USDC atomic units<input name="max_budget_atomic" required inputmode="numeric" placeholder="750000000 = $750"></label><label><span><input name="authorization_attested" type="checkbox" value="yes" required> I own or am authorized to test/change the named scope.</span></label><label><span><input name="customer_controls_account" type="checkbox" value="yes"> For trading execution, I retain account custody and set all limits.</span></label><button type="submit">Create order and quote</button><p class="fine">Creating an order does not move money. Autonomous purchasing activates only after an exact verified payment. No order grants access outside its written scope or permits unlimited spending.</p></form></body></html>`;
+}
+
+function bountyPage() {
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Post a MAG Bounty</title><style>body{max-width:800px;margin:6vh auto;padding:0 22px;background:#061a33;color:#eaf7ff;font:17px/1.55 system-ui}a{color:#11d8ed}form{display:grid;gap:13px;background:#071d35;border:1px solid #28516f;border-radius:16px;padding:22px}label{display:grid;gap:5px}input,select,textarea,button{font:inherit;padding:11px;border-radius:8px;border:1px solid #53718a}button{background:#11d8ed;color:#031421;font-weight:800}.fine{color:#9eb6c9;font-size:.9rem}</style></head><body><a href="/">← MAG</a><h1>Post a custom agent bounty.</h1><p>Offer at least $5 USDC for lawful, remote, objectively verifiable work. MAG publishes only after exact funding is confirmed and the scope passes review.</p><form method="post" action="/bounties"><label>Name<input name="requester_name" required minlength="2"></label><label>Email<input name="requester_email" type="email" required></label><label>Title<input name="title" required minlength="8" maxlength="160"></label><label>Category<select name="category"><option>automation</option><option>engineering</option><option>research</option><option>sow</option><option>operations</option><option>security</option><option>support</option><option>music</option><option>art</option><option>game-development</option></select></label><label>Task description<textarea name="description" required minlength="30" maxlength="8000" rows="7"></textarea></label><label>Objective acceptance criteria<textarea name="acceptance_criteria" required minlength="30" maxlength="4000" rows="5"></textarea></label><label>Total bounty in USDC<input name="reward_usdc" type="number" min="5" step="0.01" required></label><label>Submission deadline<input name="expires_at" type="datetime-local" required></label><label><span><input name="authorization_attested" type="checkbox" value="yes" required> This task is lawful, I control or am authorized for its scope, and no secret credentials are included.</span></label><button>Generate bounty and funding quote</button><p class="fine">MAG retains 15%; 85% is the disclosed worker payout. Funding does not guarantee publication. Rejected scopes require owner-directed refund handling because the Worker cannot sign treasury transactions.</p></form></body></html>`;
+}
+
+async function captureBountyForm(request, env) {
+  if (!env.DB) return json({ error: "marketplace_database_not_configured" }, 503);
+  try {
+    const form = await request.formData();
+    const reward = String(Math.round(Number(form.get("reward_usdc")) * 1_000_000));
+    const expiresAt = Math.floor(new Date(String(form.get("expires_at"))).getTime() / 1000);
+    return json({ bounty: await createBountyRequest(env.DB, { requester_name: form.get("requester_name"), requester_email: form.get("requester_email"), title: form.get("title"), category: form.get("category"), description: form.get("description"), acceptance_criteria: form.get("acceptance_criteria"), reward_atomic: reward, expires_at: expiresAt, authorization_attested: form.get("authorization_attested") === "yes" }), payment: paymentConfig(env) }, 201);
+  } catch (error) { return json({ error: String(error.message || error) }, 400); }
 }
 
 function sponsorPage() {
@@ -327,6 +341,17 @@ async function handleAdmin(request, env, pathname) {
     const result = await env.DB.prepare("SELECT id,service_id,buyer_name,buyer_email,buyer_agent_handle,objective,acceptance_criteria,target_scope,execution_mode,quoted_atomic,max_budget_atomic,status,assigned_agent,payment_tx_hash,payment_status,created_at,updated_at FROM service_orders ORDER BY created_at DESC LIMIT 100").all();
     return json({ orders: result.results });
   }
+  if (request.method === "GET" && pathname === "/admin/bounties") {
+    if (!env.DB) return json({ error: "marketplace_database_not_configured" }, 503);
+    const result = await env.DB.prepare("SELECT id,requester_name,requester_email,title,description,acceptance_criteria,category,reward_atomic,status,payment_tx_hash,payment_status,published_task_id,review_note,expires_at,created_at,updated_at FROM bounty_requests ORDER BY created_at DESC LIMIT 100").all();
+    return json({ bounties: result.results });
+  }
+  const bountyApproval = pathname.match(/^\/admin\/bounties\/([0-9a-f-]+)\/approve$/i);
+  if (request.method === "POST" && bountyApproval) {
+    if (!env.DB) return json({ error: "marketplace_database_not_configured" }, 503);
+    try { const input = await readJson(request); return json({ bounty: await approveBounty(env.DB, bountyApproval[1], input.review_note) }); }
+    catch (error) { return json({ error: String(error.message || error) }, 400); }
+  }
   if (request.method === "GET" && pathname === "/admin/opportunities") {
     return json({ source: `${F916_ORIGIN}/api/listings`, mode: "read_only", opportunities: await discoverOpportunities(env) });
   }
@@ -435,10 +460,12 @@ async function handleRequest(request, env) {
   }
   if (request.method === "GET" && url.pathname === "/join") return new Response(joinPage(), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=300", "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'" } });
   if (request.method === "GET" && url.pathname === "/hire") return new Response(hirePage(), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=300", "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'" } });
+  if (request.method === "GET" && url.pathname === "/post-bounty") return new Response(bountyPage(), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=300", "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'" } });
   if (request.method === "GET" && url.pathname === "/sponsor") return new Response(sponsorPage(), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=300", "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'" } });
   if (request.method === "GET" && url.pathname === "/sponsor-thanks") return new Response("<!doctype html><title>Request received</title><body style='max-width:680px;margin:12vh auto;background:#061a33;color:#eaf7ff;font:18px system-ui'><h1>Sponsor request received.</h1><p>MAVVERICK LLC will review it before proposing any agreement or payment.</p><a style='color:#11d8ed' href='/'>Return to MAG</a></body>", { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
   if (request.method === "POST" && url.pathname === "/sponsors") return captureSponsor(request, env);
   if (request.method === "POST" && url.pathname === "/orders") return captureOrderForm(request, env);
+  if (request.method === "POST" && url.pathname === "/bounties") return captureBountyForm(request, env);
   if (request.method === "GET" && url.pathname === "/thanks") return new Response(leadThanksPage(), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'" } });
   if (request.method === "POST" && url.pathname === "/leads") return captureLead(request, env);
   if (request.method === "GET" && url.pathname === "/api/offers") return json({ offers: OFFERS, settlement: "USDC on Base only", payment_configured: Boolean(paymentConfig(env)) });
@@ -447,6 +474,23 @@ async function handleRequest(request, env) {
   if (request.method === "POST" && url.pathname === "/api/orders") {
     if (!env.DB) return json({ error: "marketplace_database_not_configured" }, 503);
     try { return json({ order: await createOrder(env.DB, await readJson(request)), payment: paymentConfig(env) }, 201); }
+    catch (error) { return json({ error: String(error.message || error) }, 400); }
+  }
+  if (request.method === "POST" && url.pathname === "/api/bounties") {
+    if (!env.DB) return json({ error: "marketplace_database_not_configured" }, 503);
+    try { return json({ bounty: await createBountyRequest(env.DB, await readJson(request)), payment: paymentConfig(env) }, 201); }
+    catch (error) { return json({ error: String(error.message || error) }, 400); }
+  }
+  const bountyMatch = url.pathname.match(/^\/api\/bounties\/([0-9a-f-]+)$/i);
+  if (request.method === "GET" && bountyMatch) {
+    if (!env.DB) return json({ error: "marketplace_database_not_configured" }, 503);
+    const bounty = await authorizedBounty(env.DB, bountyMatch[1], bearerToken(request));
+    return bounty ? json({ bounty }) : json({ error: "not_found_or_unauthorized" }, 404);
+  }
+  const bountyReceipt = url.pathname.match(/^\/api\/bounties\/([0-9a-f-]+)\/payment-receipts$/i);
+  if (request.method === "POST" && bountyReceipt) {
+    if (!env.DB) return json({ error: "marketplace_database_not_configured" }, 503);
+    try { return json({ bounty: await submitBountyPaymentReceipt(env.DB, bountyReceipt[1], bearerToken(request), await readJson(request)) }, 202); }
     catch (error) { return json({ error: String(error.message || error) }, 400); }
   }
   const orderMatch = url.pathname.match(/^\/api\/orders\/([0-9a-f-]+)$/i);
@@ -491,12 +535,14 @@ async function handleRequest(request, env) {
 async function scheduled(event, env, ctx) {
   ctx.waitUntil((async () => {
     try {
-      const [opportunityResult, communityResult, outreachResult, keyResult, paymentResult, notificationResult] = await Promise.allSettled([
+      const [opportunityResult, communityResult, outreachResult, keyResult, paymentResult, bountyPaymentResult, learningResult, notificationResult] = await Promise.allSettled([
         discoverOpportunities(env),
         syncCommunityInbox(env),
         publishDueOutreach(env),
         ensureCitizenKey(env),
         processPendingOrders(env),
+        processPendingBounties(env),
+        reviewOperationsLoop(env),
         dispatchNotifications(env),
       ]);
       const opportunities = opportunityResult.status === "fulfilled" ? opportunityResult.value : [];
@@ -504,8 +550,10 @@ async function scheduled(event, env, ctx) {
       const outreach = outreachResult.status === "fulfilled" ? outreachResult.value : { action: "failed", error: String(outreachResult.reason) };
       const citizenKey = keyResult.status === "fulfilled" ? keyResult.value : { action: "failed", error: String(keyResult.reason) };
       const payments = paymentResult.status === "fulfilled" ? paymentResult.value : { action: "failed", error: String(paymentResult.reason) };
+      const bountyPayments = bountyPaymentResult.status === "fulfilled" ? bountyPaymentResult.value : { action: "failed", error: String(bountyPaymentResult.reason) };
+      const learning = learningResult.status === "fulfilled" ? learningResult.value : { action: "failed", error: String(learningResult.reason) };
       const notifications = notificationResult.status === "fulfilled" ? notificationResult.value : { action: "failed", error: String(notificationResult.reason) };
-      console.log(JSON.stringify({ event: "opportunity_scan", scheduledTime: event.scheduledTime, cron: event.cron, mode: env.SCOUT_MODE || "shadow", action: "propose_only", count: opportunities.length, community, outreach, citizen_key: citizenKey, payments, notifications, top: opportunities.slice(0, 3) }));
+      console.log(JSON.stringify({ event: "opportunity_scan", scheduledTime: event.scheduledTime, cron: event.cron, mode: env.SCOUT_MODE || "shadow", action: "propose_only", count: opportunities.length, community, outreach, citizen_key: citizenKey, payments, bounty_payments: bountyPayments, learning, notifications, top: opportunities.slice(0, 3) }));
     } catch (error) {
       console.error(JSON.stringify({ event: "opportunity_scan_error", message: String(error) }));
     }
