@@ -568,9 +568,14 @@ async function handleRequest(request, env) {
 async function scheduled(event, env, ctx) {
   ctx.waitUntil((async () => {
     try {
-      const opportunities = await discoverOpportunities(env);
-      const community = await syncCommunityInbox(env);
-      const outreach = await publishDueOutreach(env);
+      const [opportunityResult, communityResult, outreachResult] = await Promise.allSettled([
+        discoverOpportunities(env),
+        syncCommunityInbox(env),
+        publishDueOutreach(env)
+      ]);
+      const opportunities = opportunityResult.status === "fulfilled" ? opportunityResult.value : [];
+      const community = communityResult.status === "fulfilled" ? communityResult.value : { action: "failed", error: String(communityResult.reason) };
+      const outreach = outreachResult.status === "fulfilled" ? outreachResult.value : { action: "failed", error: String(outreachResult.reason) };
       console.log(JSON.stringify({ event: "opportunity_scan", scheduledTime: event.scheduledTime, cron: event.cron, mode: env.SCOUT_MODE || "shadow", action: "propose_only", count: opportunities.length, community, outreach, top: opportunities.slice(0, 3) }));
     } catch (error) {
       console.error(JSON.stringify({ event: "opportunity_scan_error", message: String(error) }));
