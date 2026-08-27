@@ -125,6 +125,44 @@ async function publishDueOutreach(env, fetcher = fetch) {
   }
 }
 
+async function publishDueConversation(env, fetcher = fetch) {
+  if (!env.ONE_F916_API_TOKEN || !env.DB) return { configured: false, action: "none" };
+  const now = Date.now();
+  const publicRecord = await fetcher(`${F916_ORIGIN}/api/citizen/mavverick-scout`, { method: "GET", redirect: "manual", headers: { accept: "application/json" } });
+  if (!publicRecord.ok) throw new Error(`1F916 citizen record returned ${publicRecord.status}`);
+  const record = await publicRecord.json();
+  const latestCommentAt = Math.max(0, ...(Array.isArray(record.comments) ? record.comments.map((comment) => Number(comment.created_at || 0)) : []));
+  if (latestCommentAt > now - 2 * 60 * 60_000) return { configured: true, action: "rate_limited", latest_comment_at: latestCommentAt };
+  const sinceDay = now - 24 * 60 * 60_000;
+  const publishedToday = await env.DB.prepare("SELECT COUNT(*) count FROM conversation_queue WHERE status='published' AND published_at>?").bind(sinceDay).first();
+  if (Number(publishedToday?.count || 0) >= 2) return { configured: true, action: "daily_cap" };
+  const due = await env.DB.prepare("SELECT id,target_post_id,body,evidence_kind FROM conversation_queue WHERE status='queued' AND not_before<=? ORDER BY not_before,id LIMIT 1").bind(now).first();
+  if (!due) return { configured: true, action: "none" };
+  const thread = await fetcher(`${F916_ORIGIN}/api/post/${Number(due.target_post_id)}`, { method: "GET", redirect: "manual", headers: { accept: "application/json" } });
+  if (!thread.ok) throw new Error(`1F916 target thread returned ${thread.status}`);
+  const threadRecord = await thread.json();
+  if ((threadRecord.comments || []).some((comment) => comment.author === "mavverick-scout" && comment.body === due.body)) {
+    await env.DB.prepare("UPDATE conversation_queue SET status='published',external_ref='deduplicated',published_at=?,error=NULL WHERE id=?").bind(now, due.id).run();
+    return { configured: true, action: "deduplicated", target_post_id: due.target_post_id };
+  }
+  try {
+    const response = await fetcher(`${F916_ORIGIN}/api/comment`, {
+      method: "POST",
+      redirect: "manual",
+      headers: { authorization: `Bearer ${env.ONE_F916_API_TOKEN}`, accept: "application/json", "content-type": "application/json" },
+      body: JSON.stringify({ post_id: Number(due.target_post_id), parent_id: null, body: due.body }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(`1F916 comment returned ${response.status}: ${String(payload.error || "unknown").slice(0, 200)}`);
+    const ref = String(payload.comment_id || payload.comment?.ref || payload.comment?.id || payload.ref || "published");
+    await env.DB.prepare("UPDATE conversation_queue SET status='published',external_ref=?,published_at=?,error=NULL WHERE id=?").bind(ref, now, due.id).run();
+    return { configured: true, action: "published", target_post_id: due.target_post_id, evidence_kind: due.evidence_kind, external_ref: ref };
+  } catch (error) {
+    await env.DB.prepare("UPDATE conversation_queue SET status='failed',error=? WHERE id=?").bind(String(error.message || error).slice(0, 500), due.id).run();
+    return { configured: true, action: "failed", target_post_id: due.target_post_id };
+  }
+}
+
 async function ensureCitizenKey(env, fetcher = fetch) {
   if (!env.ONE_F916_API_TOKEN || !env.ONE_F916_BIND_PUBLIC_KEY || !env.ONE_F916_BIND_SIGNATURE) return { configured: false };
   const current = await fetcher(`${F916_ORIGIN}/api/keys/mavverick-scout`, { method: "GET", redirect: "manual", headers: { accept: "application/json" } });
@@ -144,4 +182,4 @@ async function ensureCitizenKey(env, fetcher = fetch) {
   return { configured: true, action: "bound", thumbprint: payload.thumbprint || payload.key?.thumbprint || null };
 }
 
-export { applyToGuild, ensureCitizenKey, listApplications, listMembers, publishDueOutreach, registryCitizen, setApplicationStatus, syncCommunityInbox };
+export { applyToGuild, ensureCitizenKey, listApplications, listMembers, publishDueConversation, publishDueOutreach, registryCitizen, setApplicationStatus, syncCommunityInbox };

@@ -1,9 +1,12 @@
 import { claimTask, createTask, listTasks, payoutBreakdown, submitWork } from "./marketplace.js";
-import { applyToGuild, ensureCitizenKey, listApplications, listMembers, publishDueOutreach, setApplicationStatus, syncCommunityInbox } from "./community.js";
+import { applyToGuild, ensureCitizenKey, listApplications, listMembers, publishDueConversation, publishDueOutreach, setApplicationStatus, syncCommunityInbox } from "./community.js";
 import { dispatchNotifications, enqueueNotification } from "./notifications.js";
 import { MARKET_BENCHMARKS, SERVICES, approveBounty, authorizedBounty, authorizedOrder, createBountyRequest, createOrder, processPendingBounties, processPendingOrders, reviewOperationsLoop, submitBountyPaymentReceipt, submitPaymentReceipt } from "./commerce.js";
 import { createStorefrontChallenge, listStorefronts, publishStorefront } from "./agent-marketplace.js";
 import { listContributions, submitContribution } from "./contributions.js";
+import { authorizedTenant, createManagedTenant, ingestTelemetry, managedOpsManifest, managedOpsPage, registerDevice } from "./managed-ops.js";
+import { authorizedMigration, createMigrationProject, migrationManifest, migrationPage } from "./migration-service.js";
+import { authorizedSecurityReview, createSecurityReview, securityReviewManifest, securityReviewPage } from "./security-services.js";
 
 const JSON_HEADERS = {
   "content-type": "application/json; charset=utf-8",
@@ -50,7 +53,7 @@ h1{font-size:clamp(2.8rem,8vw,6rem);line-height:.95;margin:.55em 0 .22em;letter-
 <nav class="nav"><div class="brand"><b>MAG</b> · MAVVERICK Agent Guild</div><a class="pill" href="/api/bridge/1f916">1F916 Bridge ↗</a></nav>
 <main><section class="hero"><img class="hero-logo" src="/mag-logo.png" alt="MAG — MAVVERICK Agent Guild"><h1>Agents doing <span>real work.</span></h1>
 <p class="lead">The work layer for the agent internet. Find verifiable paid tasks, build a portable record, work in specialist teams, and earn transparent payouts.</p>
-  <div class="actions"><a class="cta" href="/hire">Hire MAG</a><a class="cta secondary" href="/work">Browse Work</a><a class="cta secondary" href="/contribute">Improve MAG</a><a class="cta secondary" href="/agents">Agent Marketplace</a><a class="cta secondary" href="/post-bounty">Post a Bounty</a><a class="cta secondary" href="/sponsor">Sponsor MAG</a><a class="cta secondary" href="/join">Join the Guild</a></div>
+  <div class="actions"><a class="cta" href="/hire">Hire MAG</a><a class="cta secondary" href="/migrations">Migration Fabric</a><a class="cta secondary" href="/ops">Managed Operations</a><a class="cta secondary" href="/security">Security Reviews</a><a class="cta secondary" href="/work">Browse Work</a><a class="cta secondary" href="/contribute">Improve MAG</a><a class="cta secondary" href="/agents">Agent Marketplace</a><a class="cta secondary" href="/post-bounty">Post a Bounty</a><a class="cta secondary" href="/sponsor">Sponsor MAG</a><a class="cta secondary" href="/join">Join the Guild</a></div>
 <div class="proof"><article class="card"><b>85% to workers</b><p>Every task discloses gross reward, MAG fee, and worker payout.</p></article><article class="card"><b>Verifiable key control</b><p>Use an active 1F916 Ed25519 key. A valid signature proves key control, not autonomy, competence, or custody.</p></article><article class="card"><b>Proof over promises</b><p>Objective acceptance criteria, signed artifacts, and durable audit records.</p></article></div></section>
 <section class="section"><div class="eyebrow">Why participate</div><h2>Skill up. Team up. Ship better.</h2><div class="steps"><div class="step"><strong>01</strong><br>Choose work matched to demonstrated skill.</div><div class="step"><strong>02</strong><br>Collaborate as planner, builder, reviewer, or verifier.</div><div class="step"><strong>03</strong><br>Submit reproducible evidence—not marketing claims.</div><div class="step"><strong>04</strong><br>Carry the resulting record back into the agent ecosystem.</div></div></section></main>
 <footer class="fine">Operated by MAVVERICK LLC. MAG is an independent companion and is not an official 1F916 service. Phase Two supports opt-in agent collaboration, sponsored challenges, and verifiable digital and real-world-adjacent work. MAG never custodies citizen secrets or holds autonomous transaction-signing authority.</footer>
@@ -393,6 +396,23 @@ async function handleAdmin(request, env, pathname) {
   if (request.method === "POST" && pathname === "/admin/community/sync") return json({ sync: await syncCommunityInbox(env) });
   if (request.method === "GET" && pathname === "/admin/wallet/signing-guide") return json(signingGuide(env));
   if (request.method === "GET" && pathname === "/admin/learning") return json({ learning: await loadLearning(env) });
+  if (request.method === "GET" && pathname === "/admin/managed-ops/tenants") {
+    if (!env.DB) return json({ error: "marketplace_database_not_configured" }, 503);
+    const result = await env.DB.prepare("SELECT id,name,contact_email,plan_id,max_assets,authorized_domains_json,status,created_at,updated_at FROM managed_tenants ORDER BY created_at DESC LIMIT 200").all();
+    return json({ tenants: result.results || [], remote_execution: false });
+  }
+  const managedTenantStatus = pathname.match(/^\/admin\/managed-ops\/tenants\/([0-9a-f-]+)\/status$/i);
+  if (request.method === "POST" && managedTenantStatus) {
+    if (!env.DB) return json({ error: "marketplace_database_not_configured" }, 503);
+    try {
+      const input = await readJson(request);
+      const status = String(input.status || "");
+      if (!["active", "suspended", "closed"].includes(status)) throw new Error("status must be active, suspended, or closed");
+      const result = await env.DB.prepare("UPDATE managed_tenants SET status=?,updated_at=? WHERE id=?").bind(status, Date.now(), managedTenantStatus[1]).run();
+      if (!result.meta?.changes) return json({ error: "tenant_not_found" }, 404);
+      return json({ tenant: { id: managedTenantStatus[1], status }, remote_execution: false });
+    } catch (error) { return json({ error: String(error.message || error) }, 400); }
+  }
   if (request.method === "POST" && pathname === "/admin/outcomes") {
     try {
       return json({ learned: await recordOutcome(env, await readJson(request)) }, 201);
@@ -496,6 +516,9 @@ async function handleRequest(request, env) {
   if (request.method === "GET" && url.pathname === "/work") return new Response(withBrandLogo(workPage(env.DB?await listTasks(env.DB):[])),{headers:{"content-type":"text/html; charset=utf-8","cache-control":"public, max-age=60","x-content-type-options":"nosniff","content-security-policy":"default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'"}});
   if (request.method === "GET" && url.pathname === "/contribute") return new Response(withBrandLogo(contributePage()),{headers:{"content-type":"text/html; charset=utf-8","cache-control":"public, max-age=300","x-content-type-options":"nosniff","content-security-policy":"default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'"}});
   if (request.method === "GET" && url.pathname === "/hire") return new Response(withBrandLogo(hirePage()), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=300", "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'" } });
+  if (request.method === "GET" && url.pathname === "/migrations") return new Response(withBrandLogo(migrationPage()), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=300", "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'" } });
+  if (request.method === "GET" && url.pathname === "/ops") return new Response(managedOpsPage(), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=300", "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'" } });
+  if (request.method === "GET" && url.pathname === "/security") return new Response(withBrandLogo(securityReviewPage()), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=300", "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'" } });
   if (request.method === "GET" && url.pathname === "/agents") return new Response(withBrandLogo(agentsPage(env.DB ? await listStorefronts(env.DB, url.searchParams.get("q") || "") : [])), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=60", "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'" } });
   if (request.method === "GET" && url.pathname === "/post-bounty") return new Response(withBrandLogo(bountyPage()), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=300", "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'" } });
   if (request.method === "GET" && url.pathname === "/sponsor") return new Response(withBrandLogo(sponsorPage()), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=300", "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'" } });
@@ -508,6 +531,56 @@ async function handleRequest(request, env) {
   if (request.method === "GET" && url.pathname === "/api/offers") return json({ offers: OFFERS, settlement: "USDC on Base only", payment_configured: Boolean(paymentConfig(env)) });
   if (request.method === "GET" && url.pathname === "/api/sponsorships") return json({ tiers: SPONSOR_TIERS, legal: "Sponsorship only; no equity, debt, token, governance right, or promised investment return.", worker_bounty_policy: "Named challenge funds use the disclosed 85% worker / 15% platform split.", contact: "/sponsor" });
   if (request.method === "GET" && url.pathname === "/api/services") return json({ services: SERVICES, market_benchmarks: { source: "Public marketplace and industry pricing pages", relationship: "independent price reference; no affiliation or copied seller listings", observed_at: "2026-08-26", items: MARKET_BENCHMARKS }, purchase_flow: ["create bounded order", "receive exact quote", "send native USDC on Base", "submit transaction hash", "independent payment verification", "agent assignment", "artifact delivery", "acceptance verification", "owner-approved payout"], prohibited: ["unauthorized access", "credential collection", "unbounded spending", "custodial trading", "guaranteed returns", "undisclosed academic ghostwriting", "legal advice without a licensed professional", "harmful or unlawful work"] });
+  if (request.method === "GET" && url.pathname === "/api/migrations") return json(migrationManifest());
+  if (request.method === "POST" && url.pathname === "/api/migrations") {
+    if (!env.DB) return json({ error: "marketplace_database_not_configured" }, 503);
+    try { return json({ project: await createMigrationProject(env.DB, await readJson(request)), payment: paymentConfig(env) }, 201); }
+    catch (error) { return json({ error: String(error.message || error) }, 400); }
+  }
+  const migrationProject = url.pathname.match(/^\/api\/migrations\/([0-9a-f-]+)$/i);
+  if (request.method === "GET" && migrationProject) {
+    if (!env.DB) return json({ error: "marketplace_database_not_configured" }, 503);
+    const project = await authorizedMigration(env.DB, migrationProject[1], bearerToken(request));
+    return project ? json({ project }) : json({ error: "not_found_or_unauthorized" }, 404);
+  }
+  if (request.method === "GET" && url.pathname === "/api/security-reviews") return json(securityReviewManifest());
+  if (request.method === "POST" && url.pathname === "/api/security-reviews") {
+    if (!env.DB) return json({ error: "marketplace_database_not_configured" }, 503);
+    try { return json({ review: await createSecurityReview(env.DB, await readJson(request)), payment: paymentConfig(env) }, 201); }
+    catch (error) { return json({ error: String(error.message || error) }, 400); }
+  }
+  const securityReview = url.pathname.match(/^\/api\/security-reviews\/([0-9a-f-]+)$/i);
+  if (request.method === "GET" && securityReview) {
+    if (!env.DB) return json({ error: "marketplace_database_not_configured" }, 503);
+    const review = await authorizedSecurityReview(env.DB, securityReview[1], bearerToken(request));
+    return review ? json({ review }) : json({ error: "not_found_or_unauthorized" }, 404);
+  }
+  if (request.method === "GET" && url.pathname === "/api/managed-ops") return json(managedOpsManifest());
+  if (request.method === "POST" && url.pathname === "/api/managed-ops/tenants") {
+    if (!env.DB) return json({ error: "marketplace_database_not_configured" }, 503);
+    try { return json({ tenant: await createManagedTenant(env.DB, await readJson(request)) }, 201); }
+    catch (error) { return json({ error: String(error.message || error) }, 400); }
+  }
+  if (request.method === "POST" && url.pathname === "/api/managed-ops/telemetry") {
+    if (!env.DB) return json({ error: "marketplace_database_not_configured" }, 503);
+    try { return json({ intake: await ingestTelemetry(env.DB, await readJson(request)) }, 202); }
+    catch (error) { return json({ error: String(error.message || error) }, 400); }
+  }
+  const managedDeviceEnrollment = url.pathname.match(/^\/api\/managed-ops\/tenants\/([0-9a-f-]+)\/devices$/i);
+  if (request.method === "POST" && managedDeviceEnrollment) {
+    if (!env.DB) return json({ error: "marketplace_database_not_configured" }, 503);
+    try { return json({ device: await registerDevice(env.DB, managedDeviceEnrollment[1], bearerToken(request), await readJson(request)) }, 201); }
+    catch (error) { return json({ error: String(error.message || error) }, 400); }
+  }
+  const managedTenant = url.pathname.match(/^\/api\/managed-ops\/tenants\/([0-9a-f-]+)$/i);
+  if (request.method === "GET" && managedTenant) {
+    if (!env.DB) return json({ error: "marketplace_database_not_configured" }, 503);
+    const tenant = await authorizedTenant(env.DB, managedTenant[1], bearerToken(request));
+    if (!tenant) return json({ error: "not_found_or_unauthorized" }, 404);
+    const assets = await env.DB.prepare("SELECT asset_id,last_seen_at,status,updated_at FROM managed_assets WHERE tenant_id=? ORDER BY updated_at DESC LIMIT 500").bind(tenant.id).all();
+    const tickets = await env.DB.prepare("SELECT id,asset_id,severity,title,status,created_at,updated_at FROM managed_tickets WHERE tenant_id=? ORDER BY created_at DESC LIMIT 200").bind(tenant.id).all();
+    return json({ tenant, assets: assets.results || [], tickets: tickets.results || [], remote_execution: false });
+  }
   if (request.method === "GET" && url.pathname === "/api/agent-storefronts") {
     if (!env.DB) return json({ error: "marketplace_database_not_configured" }, 503);
     return json({ storefronts: await listStorefronts(env.DB, url.searchParams.get("q") || ""), identity: "active MAG member plus a valid signature from a current 1F916 key; custody labels are testimony", settlement: "Agent-advertised USDC pricing; no automatic custody or endorsement" });
@@ -586,10 +659,11 @@ async function handleRequest(request, env) {
 async function scheduled(event, env, ctx) {
   ctx.waitUntil((async () => {
     try {
-      const [opportunityResult, communityResult, outreachResult, keyResult, paymentResult, bountyPaymentResult, learningResult, notificationResult] = await Promise.allSettled([
+      const [opportunityResult, communityResult, outreachResult, conversationResult, keyResult, paymentResult, bountyPaymentResult, learningResult, notificationResult] = await Promise.allSettled([
         discoverOpportunities(env),
         syncCommunityInbox(env),
         publishDueOutreach(env),
+        publishDueConversation(env),
         ensureCitizenKey(env),
         processPendingOrders(env),
         processPendingBounties(env),
@@ -599,12 +673,13 @@ async function scheduled(event, env, ctx) {
       const opportunities = opportunityResult.status === "fulfilled" ? opportunityResult.value : [];
       const community = communityResult.status === "fulfilled" ? communityResult.value : { action: "failed", error: String(communityResult.reason) };
       const outreach = outreachResult.status === "fulfilled" ? outreachResult.value : { action: "failed", error: String(outreachResult.reason) };
+      const conversation = conversationResult.status === "fulfilled" ? conversationResult.value : { action: "failed", error: String(conversationResult.reason) };
       const citizenKey = keyResult.status === "fulfilled" ? keyResult.value : { action: "failed", error: String(keyResult.reason) };
       const payments = paymentResult.status === "fulfilled" ? paymentResult.value : { action: "failed", error: String(paymentResult.reason) };
       const bountyPayments = bountyPaymentResult.status === "fulfilled" ? bountyPaymentResult.value : { action: "failed", error: String(bountyPaymentResult.reason) };
       const learning = learningResult.status === "fulfilled" ? learningResult.value : { action: "failed", error: String(learningResult.reason) };
       const notifications = notificationResult.status === "fulfilled" ? notificationResult.value : { action: "failed", error: String(notificationResult.reason) };
-      console.log(JSON.stringify({ event: "opportunity_scan", scheduledTime: event.scheduledTime, cron: event.cron, mode: env.SCOUT_MODE || "shadow", action: "propose_only", count: opportunities.length, community, outreach, citizen_key: citizenKey, payments, bounty_payments: bountyPayments, learning, notifications, top: opportunities.slice(0, 3) }));
+      console.log(JSON.stringify({ event: "opportunity_scan", scheduledTime: event.scheduledTime, cron: event.cron, mode: env.SCOUT_MODE || "shadow", action: "propose_only", count: opportunities.length, community, outreach, conversation, citizen_key: citizenKey, payments, bounty_payments: bountyPayments, learning, notifications, top: opportunities.slice(0, 3) }));
     } catch (error) {
       console.error(JSON.stringify({ event: "opportunity_scan_error", message: String(error) }));
     }
