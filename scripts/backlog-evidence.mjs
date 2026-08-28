@@ -35,8 +35,10 @@ export function classifyDisagreementFalsifier(input) {
       input.candidate_event.length > 1000 ||
       typeof input.challenge_surface !== "string" || !input.challenge_surface ||
       input.challenge_surface.length > 1000 ||
+      (input.causal_cut != null && (typeof input.causal_cut !== "string" ||
+        !input.causal_cut || input.causal_cut.length > 1000)) ||
       !Array.isArray(input.assumptions) || input.assumptions.length > 32 ||
-      input.assumptions.some(item => typeof item !== "string" || !item || item.length > 500)) {
+      Array.from(input.assumptions).some(item => typeof item !== "string" || !item || item.length > 500)) {
     return { state: "unknown", reason: "bounded_description_required", ...base };
   }
   if (input.status === "observed") {

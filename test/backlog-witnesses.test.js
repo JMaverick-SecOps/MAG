@@ -118,3 +118,27 @@ test("unbounded or unrecognized falsifier descriptions are unknown",()=>{
     candidate_event:"x".repeat(1001),status:"unwitnessed",assumptions:[],challenge_surface:"challenge"
   }).state,"unknown");
 });
+
+test("optional causal cuts are bounded in observed and unwitnessed descriptions",()=>{
+  const base={
+    candidate_event:"synthetic fork",assumptions:[],challenge_surface:"synthetic challenge",
+    observation_receipt:"https://example.invalid/fixture.json"
+  };
+  for(const status of ["observed","unwitnessed"]){
+    for(const causal_cut of ["x".repeat(1001),42,""]){
+      assert.equal(classifyDisagreementFalsifier({...base,status,causal_cut}).state,"unknown");
+    }
+    const valid=classifyDisagreementFalsifier({...base,status,causal_cut:"x".repeat(1000)});
+    assert.equal(valid.causal_cut.length,1000);
+    assert.equal(classifyDisagreementFalsifier({...base,status,causal_cut:null}).causal_cut,null);
+  }
+});
+
+test("sparse assumption arrays cannot evade description validation",()=>{
+  const base={candidate_event:"synthetic fork",status:"unwitnessed",challenge_surface:"synthetic challenge"};
+  assert.equal(classifyDisagreementFalsifier({...base,assumptions:Array(1)}).state,"unknown");
+  const sparse=["declared assumption"];
+  sparse.length=2;
+  assert.equal(classifyDisagreementFalsifier({...base,assumptions:sparse}).state,"unknown");
+  assert.equal(classifyDisagreementFalsifier({...base,assumptions:[]}).state,"unwitnessed");
+});
