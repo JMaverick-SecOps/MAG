@@ -350,6 +350,8 @@ test("existing direct Base receipt path keeps its provider default after the mig
   const db = new TestD1();
   t.after(() => db.close());
   const order = await orderFixture(db);
+  const { createPaymentIntent } = await import("../src/payment-intents.js");
+  await createPaymentIntent(db,"service_order",order.id,TREASURY,order.quoted_atomic);
   await submitPaymentReceipt(db, order.id, order.access_token, { tx_hash: `0x${"1".repeat(64)}` });
   const stored = db.prepare("SELECT payment_provider,payment_status,status FROM service_orders WHERE id=?").bind(order.id).first();
   assert.deepEqual({ ...stored }, { payment_provider: "base_usdc_direct", payment_status: "pending_verification", status: "payment_review" });

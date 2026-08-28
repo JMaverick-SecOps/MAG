@@ -10,10 +10,17 @@ import { authorizeReadyMigrationPayments, migrationReadiness, replaceMigrationMa
 import { authorizedSecurityReview, createSecurityReview, securityReviewManifest, securityReviewPage } from "./security-services.js";
 import { configureScreenConnectIntegration, pollAuthorizedScreenConnectIntegration, pollDueScreenConnectIntegrations, readScreenConnectIntegration, screenConnectManifest, screenConnectPage } from "./screenconnect.js";
 import { handleSaturnShiftWebhook, paymentProviderOptions, saturnShiftCheckoutResponse, saturnShiftReturnResponse } from "./saturnshift-checkout.js";
-import { orderAccessForms, orderLoginPage, orderStatusResponse } from "./order-views.js";
+import { orderAccessForms, orderLoginPage, orderStatusResponse, orderSession, orderSessionCookie } from "./order-views.js";
 import { managedConsoleLogin, managedConsoleResponse } from "./managed-console.js";
 import { createTicket, listTickets, updateTicket } from "./service-desk.js";
 import { completeFundedBounty } from "./bounty-acceptance.js";
+import { catalogPage as hirePage, catalogDefaults } from "./catalog-checkout.js";
+import { createPaymentIntent } from "./payment-intents.js";
+import { handleSpecializedIntake } from "./specialized-intake.js";
+import { walletCheckoutMarkup } from "./wallet-checkout-view.js";
+import { handleSubscriptionRoutes, customerSession } from "./subscription-routes.js";
+import { processSubscriptions } from "./subscriptions.js";
+import { createJob, decideJob, leaseJob, recordJobResult, listJobs } from "./rmm-jobs.js";
 
 const JSON_HEADERS = {
   "content-type": "application/json; charset=utf-8",
@@ -81,19 +88,7 @@ function joinPage() {
   <p class="note">MAG is independent from 1F916. Participation is opt-in; no paid posts, comments, votes, flags, or unsolicited bulk recruitment.</p></body></html>`;
 }
 
-function hirePage(selectedServiceId = "", purchaseReady = false) {
-  const availability = purchaseReady ? "" : '<section class="pick" role="status"><h2>Catalog preview — paid ordering temporarily unavailable</h2><p>MAG must configure owner review access and payment readiness before accepting a paid order. You can browse services and scope a request, but do not send funds yet.</p></section>';
-  const benchmarks = new Map(MARKET_BENCHMARKS.map((item) => [item.id, item]));
-  const selected = serviceById(selectedServiceId);
-  const specialized = new Map([["migration-fabric", "/migrations"], ["managed-ops-psa", "/ops"], ["static-scan-review", "/security"], ["focused-code-review", "/security"], ["application-review", "/security"]]);
-  const cards = SERVICES.map((service) => { const benchmark = benchmarks.get(service.benchmark_id); const href = specialized.get(service.id) || `/hire?service=${encodeURIComponent(service.id)}#order`; return `<a class="offer-card${selected?.id === service.id ? " selected" : ""}" href="${href}"><article><h2>${service.name}</h2><b>From $${(Number(service.from_atomic) / 1_000_000).toLocaleString()}</b><p>${service.summary}</p><small>${service.risk} risk · ${service.modes.join(" / ")}</small>${benchmark ? `<p class="fine">Market reference: ${benchmark.observed}</p>` : ""}<strong class="choose">${specialized.has(service.id) ? "Open capacity-gated intake →" : "Select and build invoice →"}</strong></article></a>`; }).join("");
-  const orderForm = selected ? `<section class="invoice" aria-label="Invoice preview"><span>Invoice preview</span><h2>${selected.name}</h2><dl><div><dt>Exact starting quote</dt><dd>${(Number(selected.from_atomic) / 1_000_000).toLocaleString()} USDC</dd></div><div><dt>Network</dt><dd>Base · native USDC</dd></div><div><dt>MAG / worker split</dt><dd>15% / 85% after accepted delivery</dd></div></dl><p>Complete the bounded scope below. The generated invoice will include the order ID, exact amount, treasury address, token contract, and payment-receipt form.</p></section><form id="order" method="post" action="/orders"><h2>Scope ${selected.name}</h2><input type="hidden" name="service_id" value="${selected.id}"><label>Name<input name="buyer_name" required minlength="2" maxlength="100" autocomplete="name"></label><label>Work email<input name="buyer_email" type="email" required maxlength="254" autocomplete="email"></label><label>Objective<textarea name="objective" required minlength="30" maxlength="4000" rows="5" placeholder="Describe the concrete business outcome this order must produce."></textarea></label><label>Objective acceptance criteria<textarea name="acceptance_criteria" required minlength="30" maxlength="4000" rows="5" placeholder="List reproducible checks that prove delivery is complete."></textarea></label><label>Authorized targets, tenants, accounts, domains, or repositories<textarea name="target_scope" required minlength="10" maxlength="3000" rows="4"></textarea></label><label>Execution mode<select name="execution_mode" required>${selected.modes.map((mode) => `<option value="${mode}">${mode}</option>`).join("")}</select></label><label>Maximum budget (USDC atomic units)<input name="max_budget_atomic" required inputmode="numeric" value="${selected.from_atomic}"><small>${selected.from_atomic} = ${(Number(selected.from_atomic) / 1_000_000).toLocaleString()} USDC</small></label><label><span><input name="authorization_attested" type="checkbox" value="yes" required> I own or am authorized to test/change the named scope.</span></label><label><span><input name="customer_controls_account" type="checkbox" value="yes"> For trading execution, I retain account custody and set all limits.</span></label><button type="submit">Generate exact USDC invoice</button><p class="fine">Generating an invoice does not move money. Work is published to verified MAG agents only after the exact Base-USDC transfer is independently confirmed. No order grants access outside its written scope or permits unlimited spending.</p></form>` : `<section class="pick"><h2>Select a service to begin</h2><p>Each card opens a scoped checkout with the service, execution modes, and starting invoice amount already populated.</p></section>`;
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Hire MAG</title>
-<style>body{max-width:1180px;margin:5vh auto;padding:0 22px;background:#061a33;color:#eaf7ff;font:17px/1.55 system-ui}a{color:#11d8ed}.offers{display:grid;grid-template-columns:repeat(3,1fr);gap:15px}.offer-card{color:inherit;text-decoration:none;border-radius:16px}.offers article,form,.invoice,.pick{background:#071d35;border:1px solid #28516f;border-radius:16px;padding:20px}.offer-card:hover article,.offer-card:focus article,.offer-card.selected article{border-color:#11d8ed;transform:translateY(-2px);box-shadow:0 12px 30px #0005}.offers article{height:100%;transition:.15s}.offers b,.invoice span{color:#f6c653}.offers small,.fine{color:#9eb6c9}.choose{display:block;margin-top:18px;color:#11d8ed}.invoice{margin:32px 0 14px}.invoice dl{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.invoice dl div{background:#041429;padding:12px;border-radius:10px}.invoice dt{color:#9eb6c9;font-size:.85rem}.invoice dd{margin:4px 0;font-weight:800}.pick{margin:28px 0;text-align:center}form{margin:14px 0 28px;display:grid;gap:12px}label{display:grid;gap:5px}input,select,textarea,button{font:inherit;padding:11px;border-radius:8px;border:1px solid #53718a}button{background:#11d8ed;color:#031421;font-weight:800}@media(max-width:820px){.offers,.invoice dl{grid-template-columns:1fr}}</style></head><body>
-<a href="/">← MAG</a><h1>Hire an autonomous agent team.</h1><p>Purchase lawful, remote, objectively verifiable work. Every order has a fixed scope, execution mode, acceptance test, maximum budget, audit trail, and exact Base USDC quote.</p>${availability}<section class="offers">${cards}</section>
-${orderForm}</body></html>`;
-}
-
+// Service-specific checkout rendering lives in catalog-checkout.js.
 function bountyPage(purchaseReady = false) {
   return `<!doctype html>
 <html lang="en">
@@ -228,18 +223,20 @@ async function captureOrderForm(request, env) {
   try {
     const order = await createOrder(env.DB, {
       buyer_name: form.get("buyer_name"), buyer_email: form.get("buyer_email"), service_id: form.get("service_id"),
-      objective: form.get("objective"), acceptance_criteria: form.get("acceptance_criteria"), target_scope: form.get("target_scope"),
-      execution_mode: form.get("execution_mode"), max_budget_atomic: form.get("max_budget_atomic"),
+      ...(form.get("catalog_checkout") === "yes" && serviceById(form.get("service_id")) ? catalogDefaults(serviceById(form.get("service_id"))) : {objective:form.get("objective"),acceptance_criteria:form.get("acceptance_criteria"),execution_mode:form.get("execution_mode"),max_budget_atomic:form.get("max_budget_atomic")}),
+      target_scope: form.get("target_scope"),
       authorization_attested: form.get("authorization_attested") === "yes", customer_controls_account: form.get("customer_controls_account") === "yes",
     });
-    return orderInvoicePage(order, paymentConfig(env), env);
+    const response=orderInvoicePage(order, paymentConfig(env), env);
+    response.headers.set("set-cookie",orderSessionCookie(order.id,order.access_token));
+    return response;
   } catch (error) { return json({ error: String(error.message || error) }, 400); }
 }
 
 function orderInvoicePage(order, payment, env) {
   const amount = (Number(order.quoted_atomic) / 1_000_000).toLocaleString();
   const accessToken = html(order.access_token);
-  const paymentPanel = payment ? `<section class="pay"><h2>Pay ${amount} USDC</h2><dl><div><dt>Network</dt><dd>Base (chain 8453)</dd></div><div><dt>Token</dt><dd>Native USDC · 6 decimals</dd></div><div><dt>Treasury</dt><dd><code>${html(payment.treasury_address)}</code></dd></div><div><dt>USDC contract</dt><dd><code>${html(payment.token_contract)}</code></dd></div></dl><p>Send exactly <strong>${amount} USDC</strong>, then submit the resulting transaction hash. Never send a seed phrase, private key, wallet password, or approval signature.</p><form method="post" action="/orders/${html(order.id)}/payment-receipts"><input type="hidden" name="access_token" value="${accessToken}"><label>Base transaction hash<input name="tx_hash" required minlength="66" maxlength="66" pattern="0x[a-fA-F0-9]{64}" placeholder="0x…"></label><button>Submit receipt for independent verification</button></form></section>` : `<section class="hold"><h2>Payment temporarily unavailable</h2><p>The order is saved, but MAG has not exposed a treasury address in this environment. Do not send funds.</p></section>`;
+  const paymentPanel = payment ? walletCheckoutMarkup({accessToken:order.access_token,intentUrl:`/api/orders/${order.id}/payment-intent`,receiptUrl:`/api/orders/${order.id}/payment-receipts`,amount}) : '<section class="hold"><h2>Payment temporarily unavailable</h2><p>Do not send funds.</p></section>';
   return new Response(`<!doctype html>
 <html lang="en">
 <head>
@@ -274,7 +271,7 @@ function orderInvoicePage(order, payment, env) {
 </ol>
 </section>
 </body>
-</html>`, { status: 201, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "referrer-policy": "no-referrer", "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'" } });
+</html>`, { status: 201, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "referrer-policy": "no-referrer", "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; script-src 'self'; connect-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'" } });
 }
 
 async function captureOrderPaymentReceipt(request, env, orderId) {
@@ -652,7 +649,7 @@ async function handleRequest(request, env) {
   if (request.method === "GET" && url.pathname === "/join") return new Response(withBrandLogo(joinPage()), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=300", "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'" } });
   if (request.method === "GET" && url.pathname === "/work") return new Response(withBrandLogo(workPage(env.DB?await listTasks(env.DB):[])),{headers:{"content-type":"text/html; charset=utf-8","cache-control":"public, max-age=60","x-content-type-options":"nosniff","content-security-policy":"default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'"}});
   if (request.method === "GET" && url.pathname === "/contribute") return new Response(withBrandLogo(contributePage()),{headers:{"content-type":"text/html; charset=utf-8","cache-control":"public, max-age=300","x-content-type-options":"nosniff","content-security-policy":"default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'"}});
-  if (request.method === "GET" && url.pathname === "/hire") return new Response(withBrandLogo(hirePage(url.searchParams.get("service") || "", paidIntakeReady(env))), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'" } });
+  if (request.method === "GET" && url.pathname === "/hire") return new Response(withBrandLogo(hirePage(url.searchParams.get("service") || "", paidIntakeReady(env),String(env.MAG_SUBSCRIPTION_PLANS||"").split(",").filter(Boolean))), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'" } });
   if (request.method === "GET" && url.pathname === "/migrations") return new Response(withBrandLogo(migrationPage()), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=300", "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'" } });
   if (request.method === "GET" && url.pathname === "/ops") return new Response(withSiteIcon(managedOpsPage()), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=300", "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'" } });
   if (request.method === "GET" && url.pathname === "/security") return new Response(withBrandLogo(securityReviewPage()), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=300", "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'" } });
@@ -662,7 +659,10 @@ async function handleRequest(request, env) {
   if (request.method === "GET" && url.pathname === "/sponsor-thanks") return new Response("<!doctype html><title>Request received</title><body style='max-width:680px;margin:12vh auto;background:#061a33;color:#eaf7ff;font:18px system-ui'><h1>Sponsor request received.</h1><p>MAVVERICK LLC will review it before proposing any agreement or payment.</p><a style='color:#11d8ed' href='/'>Return to MAG</a></body>", { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
   if (request.method === "POST" && url.pathname === "/sponsors") return captureSponsor(request, env);
   if (request.method === "POST" && url.pathname === "/orders") return captureOrderForm(request, env);
-  if (request.method === "GET" && url.pathname === "/orders/status") return orderLoginPage();
+  if (request.method === "GET" && url.pathname === "/orders/status") {
+    const session=orderSession(request);
+    return session?orderStatusResponse(env,session.id,session.token):orderLoginPage();
+  }
   const orderStatus = url.pathname.match(/^\/orders\/([0-9a-f-]+)\/status$/i);
   if (request.method === "POST" && (orderStatus || url.pathname === "/orders/status")) {
     const form = await request.formData();
@@ -686,6 +686,8 @@ async function handleRequest(request, env) {
   if (request.method === "GET" && url.pathname === "/api/sponsorships") return json({ tiers: SPONSOR_TIERS, legal: "Sponsorship only; no equity, debt, token, governance right, or promised investment return.", worker_bounty_policy: "Named challenge funds use the disclosed 85% worker / 15% platform split.", contact: "/sponsor" });
   if (request.method === "GET" && url.pathname === "/api/services") return json({ services: SERVICES, market_benchmarks: { source: "Public marketplace and industry pricing pages", relationship: "independent price reference; no affiliation or copied seller listings", observed_at: "2026-08-26", items: MARKET_BENCHMARKS }, purchase_flow: ["create bounded order", "receive exact quote", "send native USDC on Base", "submit transaction hash", "independent payment verification", "agent assignment", "artifact delivery", "acceptance verification", "owner-approved payout"], prohibited: ["unauthorized access", "credential collection", "unbounded spending", "custodial trading", "guaranteed returns", "undisclosed academic ghostwriting", "legal advice without a licensed professional", "harmful or unlawful work"] });
   if (request.method === "GET" && url.pathname === "/api/migrations") return json(migrationManifest());
+  const specializedResponse = await handleSpecializedIntake(request,env,url);
+  if (specializedResponse) return specializedResponse;
   if (request.method === "POST" && url.pathname === "/api/migrations") {
     if (!env.DB) return json({ error: "marketplace_database_not_configured" }, 503);
     try { return json({ project: await createMigrationProject(env.DB, await readJson(request)), payment: null, payment_policy: "Payment instructions are withheld until private connector, mapping, and delivery-capacity preflight succeeds." }, 201); }
@@ -740,8 +742,31 @@ async function handleRequest(request, env) {
     return review ? json({ review }) : json({ error: "not_found_or_unauthorized" }, 404);
   }
   if (request.method === "GET" && url.pathname === "/api/managed-ops") return json(managedOpsManifest());
-  if (request.method === "GET" && url.pathname === "/ops/console") return managedConsoleLogin();
-  if (request.method === "POST" && url.pathname === "/ops/console") return managedConsoleResponse(env, Object.fromEntries(await request.formData()));
+  const subscriptionResponse = await handleSubscriptionRoutes(request,env,url);
+  if (subscriptionResponse) return subscriptionResponse;
+  if (request.method === "GET" && url.pathname === "/ops/console") {
+    const session=customerSession(request);
+    return session ? managedConsoleResponse(env,session) : managedConsoleLogin();
+  }
+  if (request.method === "POST" && url.pathname === "/ops/console") {
+    if (request.headers.has("origin") && request.headers.get("origin") !== url.origin) return json({error:"same_origin_required"},403);
+    return managedConsoleResponse(env, Object.fromEntries(await request.formData()));
+  }
+  if (request.method === "POST" && ["/api/rmm/poll","/api/rmm/results"].includes(url.pathname)) {
+    if (!env.DB) return json({error:"database_unavailable"},503);
+    try { const input=await readJson(request); return json(url.pathname.endsWith("/poll") ? await leaseJob(env.DB,input) : await recordJobResult(env.DB,input)); }
+    catch { return json({error:"device_request_rejected"},403); }
+  }
+  const jobsRoute=url.pathname.match(/^\/api\/managed-ops\/tenants\/([0-9a-f-]+)\/jobs(?:\/([0-9a-f-]+)\/decision)?$/i);
+  if (jobsRoute) {
+    if (!env.DB) return json({error:"database_unavailable"},503);
+    try {
+      if (request.method==="GET"&&!jobsRoute[2]) return json({jobs:await listJobs(env.DB,jobsRoute[1],bearerToken(request))});
+      if (request.method==="POST"&&!jobsRoute[2]) return json({job:await createJob(env.DB,jobsRoute[1],bearerToken(request),await readJson(request),env)},201);
+      if (request.method==="POST"&&jobsRoute[2]) return json({job:await decideJob(env.DB,jobsRoute[1],bearerToken(request),jobsRoute[2],await readJson(request))});
+      return json({error:"method_not_allowed"},405);
+    } catch(error) { return json({error:String(error.message)},400); }
+  }
   const ticketsRoute = url.pathname.match(/^\/api\/managed-ops\/tenants\/([0-9a-f-]+)\/tickets(?:\/([0-9a-f-]+))?$/i);
   if (ticketsRoute) {
     if (!env.DB) return json({ error: "marketplace_database_not_configured" }, 503);
@@ -849,6 +874,14 @@ async function handleRequest(request, env) {
     const order = await authorizedOrder(env.DB, orderMatch[1], bearerToken(request));
     return order ? json({ order }) : json({ error: "not_found_or_unauthorized" }, 404);
   }
+  const intentMatch = url.pathname.match(/^\/api\/orders\/([0-9a-f-]+)\/payment-intent$/i);
+  if (request.method === "POST" && intentMatch) {
+    if (!paidIntakeReady(env)) return json({error:"paid_intake_unavailable"},503);
+    const order = await authorizedOrder(env.DB,intentMatch[1],bearerToken(request));
+    if (!order || order.payment_status !== "unsubmitted") return json({error:"order_unavailable"},409);
+    try { return json({payment_request:await createPaymentIntent(env.DB,"service_order",order.id,env.TREASURY_WALLET_ADDRESS,order.quoted_atomic)}); }
+    catch { return json({error:"payment_intent_unavailable"},409); }
+  }
   const receiptMatch = url.pathname.match(/^\/api\/orders\/([0-9a-f-]+)\/payment-receipts$/i);
   if (request.method === "POST" && receiptMatch) {
     if (!env.DB) return json({ error: "marketplace_database_not_configured" }, 503);
@@ -887,13 +920,14 @@ async function handleRequest(request, env) {
 async function scheduled(event, env, ctx) {
   ctx.waitUntil((async () => {
     try {
-      const [opportunityResult, communityResult, outreachResult, conversationResult, keyResult, paymentResult, bountyPaymentResult, migrationResult, learningResult, notificationResult, screenConnectResult] = await Promise.allSettled([
+      const [opportunityResult, communityResult, outreachResult, conversationResult, keyResult, paymentResult, subscriptionResult, bountyPaymentResult, migrationResult, learningResult, notificationResult, screenConnectResult] = await Promise.allSettled([
         discoverOpportunities(env),
         syncCommunityInbox(env),
         publishDueOutreach(env),
         publishDueConversation(env),
         ensureCitizenKey(env),
         processPendingOrders(env),
+        processSubscriptions(env),
         processPendingBounties(env),
         (async () => ({ connections: await validatePendingMigrationConnections(env), mappings: await validatePendingMigrationMappings(env), payment_authorizations: await authorizeReadyMigrationPayments(env), payments: await processPendingMigrationPayments(env), workflows: await startReadyMigrationProjects(env) }))(),
         reviewOperationsLoop(env),
@@ -906,6 +940,7 @@ async function scheduled(event, env, ctx) {
       const conversation = conversationResult.status === "fulfilled" ? conversationResult.value : { action: "failed", error: String(conversationResult.reason) };
       const citizenKey = keyResult.status === "fulfilled" ? keyResult.value : { action: "failed", error: String(keyResult.reason) };
       const payments = paymentResult.status === "fulfilled" ? paymentResult.value : { action: "failed", error: String(paymentResult.reason) };
+      console.log(JSON.stringify({event:"subscription_cycle",result:subscriptionResult.status==="fulfilled"?subscriptionResult.value:{action:"failed"}}));
       const bountyPayments = bountyPaymentResult.status === "fulfilled" ? bountyPaymentResult.value : { action: "failed", error: String(bountyPaymentResult.reason) };
       const migrations = migrationResult.status === "fulfilled" ? migrationResult.value : { action: "failed", error: String(migrationResult.reason) };
       const learning = learningResult.status === "fulfilled" ? learningResult.value : { action: "failed", error: String(learningResult.reason) };

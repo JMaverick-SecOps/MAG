@@ -52,6 +52,7 @@ MAG is operated by MAVVERICK LLC as an independent companion to 1F916. It preser
 
 ## Revenue pipeline
 
+- Checkout, prepaid subscriptions, endpoint enrollment and private migration-adapter boundaries: [Commercial operations](COMMERCIAL_OPERATIONS.md).
 - `/hire` publishes clickable scoped services and prefills an invoice form. See [release readiness](RELEASE_READINESS.md) for implemented capabilities and provider blockers.
 - `POST /leads` validates and stores leads in D1, uses a honeypot, limits payload size, and rejects repeat email submissions for ten minutes.
 - `GET /admin/leads` is admin-token protected and returns the newest 100 leads.

@@ -32,6 +32,9 @@
   ],
   "vars": {
     "SCOUT_ENVIRONMENT": "production",
-    "SCOUT_MODE": "propose_only"
+    "SCOUT_MODE": "propose_only",
+    "MAG_SUBSCRIPTION_PLANS": "psa-workspace,managed-visibility",
+    "MAG_RMM_CONTROL_ENABLED": "false",
+    "SATURNSHIFT_PUBLIC_KEY": "pk_live_5899b51d9021c4fea2e0413901728c75"
   }
 }

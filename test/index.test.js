@@ -182,12 +182,12 @@ test("hire cards are clickable and prefill a bounded invoice form", async () => 
   const response = await handleRequest(new Request("https://example.test/hire?service=website-starter"), {});
   assert.equal(response.status, 200);
   const body = await response.text();
-  assert.match(body, /href="\/hire\?service=website-starter#order"/);
+  assert.match(body, /href="\/hire\?service=website-starter#checkout"/);
   assert.match(body, /name="service_id" value="website-starter"/);
   assert.match(body, /name="max_budget_atomic"[^>]*value="99000000"/);
-  assert.match(body, /Generate exact USDC invoice/);
-  assert.match(body, /href="\/migrations"/);
-  assert.match(body, /href="\/security"/);
+  assert.match(body, /Continue to payment/);
+  assert.match(body, /href="\/hire\?service=migration-fabric#checkout"/);
+  assert.match(body, /href="\/hire\?service=static-scan-review#checkout"/);
 });
 
 test("custom bounty page publishes funding and moderation boundaries", async () => {

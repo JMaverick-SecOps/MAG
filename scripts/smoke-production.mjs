@@ -41,7 +41,7 @@ const providers = await (await check("/api/payment-providers")).json();
 assert.equal(typeof providers.paid_intake_ready, "boolean");
 const invalidJson = { method: "POST", headers: { "content-type": "application/json" }, body: "{}" };
 if (!providers.paid_intake_ready) {
-  assert.match(selected, /paid ordering temporarily unavailable/);
+  assert.match(selected, /Paid intake is temporarily unavailable/);
   for (const path of ["/orders", "/api/orders", "/bounties", "/api/bounties", "/orders/00000000-0000-4000-8000-000000000001/checkout"]) {
     const response = await check(path, 503, invalidJson);
     assert.equal((await response.json()).error, "paid_intake_unavailable");
@@ -50,6 +50,22 @@ if (!providers.paid_intake_ready) {
 if (!providers.saturnshift.signed_webhook_configured) {
   await check("/api/webhooks/saturnshift", 503, invalidJson);
 }
+const catalog=await (await check("/api/services")).json();
+const catalogHtml=await (await check("/hire")).text();
+for(const service of catalog.services)assert.ok(catalogHtml.includes('href="/hire?service='+service.id+'#checkout"'),service.id);
+for(const id of ["migration-fabric","static-scan-review","managed-ops-psa"]){
+  const html=await (await check("/hire?service="+id)).text();
+  assert.ok(html.includes(id==="managed-ops-psa"?'action="/subscriptions"':'action="/intake/'),id);
+}
+const plans=await (await check("/api/subscriptions/plans")).json();
+assert.equal(plans.automatic_debit,false);
+assert.ok(!plans.enabled_plans.includes("managed-security"));
+await check("/subscriptions/billing",401);
+await check("/api/rmm/poll",403,invalidJson);
+await check("/api/rmm/results",403,invalidJson);
+const wallet=await (await check("/wallet-checkout.js")).text();
+assert.ok(wallet.includes("eth_sendTransaction"));
+assert.ok(wallet.includes("sendOutcomeUnknown"));
 await check("/admin/config", 401);
 await check("/orders/status", 404, { method: "POST", body: new URLSearchParams({ order_id: "00000000-0000-4000-8000-000000000001", access_token: "invalid-release-test-token" }) });
 

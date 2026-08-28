@@ -67,7 +67,7 @@ test("paid intake fails closed without owner review access, storage, or treasury
    assert.equal((await res.json()).error, "paid_intake_unavailable");
   }
   const catalog = await worker.fetch(new Request("https://example.test/hire?service=website-starter"), unavailable);
-  assert.match(await catalog.text(), /paid ordering temporarily unavailable/);
+  assert.match(await catalog.text(), /Paid intake is temporarily unavailable/);
   assert.equal(catalog.headers.get("cache-control"), "no-store");
   const providers = await worker.fetch(new Request("https://example.test/api/payment-providers"), unavailable);
   assert.equal((await providers.json()).paid_intake_ready, false);
@@ -75,5 +75,5 @@ test("paid intake fails closed without owner review access, storage, or treasury
  assert.equal(db.prepare("SELECT COUNT(*) n FROM service_orders").first().n, 0);
  assert.equal(db.prepare("SELECT COUNT(*) n FROM bounty_requests").first().n, 0);
  const catalog = await worker.fetch(new Request("https://example.test/hire"), ready);
- assert.doesNotMatch(await catalog.text(), /paid ordering temporarily unavailable/);
+ assert.doesNotMatch(await catalog.text(), /Paid intake is temporarily unavailable/);
 });

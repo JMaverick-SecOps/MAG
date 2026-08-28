@@ -26,6 +26,7 @@ jobs:
           node-version: 24
       - run: npm ci
       - run: npm run check
+      - run: python3 -m unittest discover -s test -p test_migration_mail.py
       - run: npx wrangler deploy --dry-run
       - name: Deploy to Cloudflare
         if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''

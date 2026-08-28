@@ -70,6 +70,8 @@ async function authorizedTenant(db, id, token) {
   const tenant = await db.prepare("SELECT id,name,contact_email,plan_id,max_assets,authorized_domains_json,status,access_token_hash,created_at,updated_at FROM managed_tenants WHERE id=?").bind(id).first();
   if (!tenant || await sha256(token) !== tenant.access_token_hash) return null;
   delete tenant.access_token_hash;
+  const subscription = await db.prepare("SELECT status,paid_through FROM managed_subscriptions WHERE tenant_id=?").bind(id).first();
+  if (subscription && !(subscription.status === "active" && Number(subscription.paid_through) > Date.now())) tenant.status = subscription.status === "pending_payment" ? "pending_review" : "suspended";
   tenant.authorized_domains = JSON.parse(tenant.authorized_domains_json || "[]");
   delete tenant.authorized_domains_json;
   return tenant;
@@ -303,15 +305,14 @@ async function registerDevice(db, tenantId, accessToken, input, now = Date.now()
   const publicKey = clean(input.public_key, 100);
   const signedAt = Number(input.signed_at);
   if (!DEVICE_ID.test(assetId) || !Number.isInteger(signedAt) || Math.abs(now - signedAt) > 300000) throw new Error("valid asset_id and fresh signed_at are required");
-  const count = Number((await db.prepare("SELECT COUNT(*) n FROM managed_devices WHERE tenant_id=? AND status='active'").bind(tenantId).first())?.n || 0);
-  if (count >= Number(tenant.max_assets)) throw new Error("tenant asset limit exceeded");
   try {
     const key = await crypto.subtle.importKey("raw", b64url(publicKey), { name: "Ed25519" }, false, ["verify"]);
     const message = new TextEncoder().encode(deviceEnrollmentPreimage({ tenantId, assetId, publicKey, signedAt }));
     if (!await crypto.subtle.verify({ name: "Ed25519" }, key, b64url(input.signature), message)) throw new Error("invalid device enrollment signature");
   } catch (error) { if (error.message === "invalid device enrollment signature") throw error; throw new Error("invalid device public key or signature"); }
-  await db.prepare("INSERT INTO managed_devices(tenant_id,asset_id,public_key,status,last_sequence,created_at,updated_at) VALUES(?,?,?,'active',0,?,?) ON CONFLICT(tenant_id,asset_id) DO UPDATE SET public_key=excluded.public_key,status='active',last_sequence=CASE WHEN managed_devices.public_key=excluded.public_key THEN managed_devices.last_sequence ELSE 0 END,updated_at=excluded.updated_at")
-    .bind(tenantId, assetId, publicKey, now, now).run();
+  const inserted=await db.prepare("INSERT INTO managed_devices(tenant_id,asset_id,public_key,status,last_sequence,created_at,updated_at) SELECT ?,?,?,'active',0,?,? WHERE (SELECT COUNT(*) FROM managed_devices WHERE tenant_id=? AND status='active') < ? OR EXISTS(SELECT 1 FROM managed_devices WHERE tenant_id=? AND asset_id=? AND status='active') ON CONFLICT(tenant_id,asset_id) DO UPDATE SET public_key=excluded.public_key,status='active',last_sequence=CASE WHEN managed_devices.public_key=excluded.public_key THEN managed_devices.last_sequence ELSE 0 END,updated_at=excluded.updated_at")
+    .bind(tenantId, assetId, publicKey, now, now, tenantId, tenant.max_assets, tenantId, assetId).run();
+  if(inserted.meta?.changes!==1)throw new Error("tenant asset limit exceeded");
   await db.prepare("INSERT INTO managed_ops_events(tenant_id,kind,details,created_at) VALUES(?,'device_enrolled',?,?)").bind(tenantId, JSON.stringify({ asset_id: assetId, remote_execution: false }), now).run();
   return { tenant_id: tenantId, asset_id: assetId, status: "active", remote_execution: false };
 }
@@ -329,6 +330,8 @@ async function ingestTelemetry(db, input, now = Date.now()) {
   if (!DEVICE_ID.test(assetId) || !Number.isSafeInteger(sequence) || sequence < 1 || !Number.isInteger(observedAt) || Math.abs(now - observedAt) > 300000) throw new Error("valid device envelope is required");
   const device = await db.prepare("SELECT d.public_key,d.status,d.last_sequence,t.status tenant_status FROM managed_devices d JOIN managed_tenants t ON t.id=d.tenant_id WHERE d.tenant_id=? AND d.asset_id=?").bind(tenantId, assetId).first();
   if (!device || device.status !== "active" || device.tenant_status !== "active") throw new Error("active enrolled device required");
+  const subscription = await db.prepare("SELECT status,paid_through FROM managed_subscriptions WHERE tenant_id=?").bind(tenantId).first();
+  if (subscription && !(subscription.status === "active" && Number(subscription.paid_through) > now)) throw new Error("active subscription required");
   const events = validateTelemetryBatch({ events: input.events }, now);
   try {
     const key = await crypto.subtle.importKey("raw", b64url(device.public_key), { name: "Ed25519" }, false, ["verify"]);
@@ -336,6 +339,9 @@ async function ingestTelemetry(db, input, now = Date.now()) {
     if (!await crypto.subtle.verify({ name: "Ed25519" }, key, b64url(input.signature), message)) throw new Error("invalid telemetry signature");
   } catch (error) { if (error.message === "invalid telemetry signature") throw error; throw new Error("invalid telemetry signature encoding"); }
   const statements = [db.prepare("UPDATE managed_devices SET last_sequence=?,last_seen_at=?,updated_at=? WHERE tenant_id=? AND asset_id=? AND last_sequence<? RETURNING asset_id").bind(sequence, observedAt, now, tenantId, assetId, sequence)];
+  // Force the whole batch to roll back when another request already advanced
+  // this sequence; checking equality alone would admit duplicate telemetry.
+  statements.push(db.prepare("INSERT INTO managed_ops_events(tenant_id,kind,details,created_at) VALUES(?,CASE WHEN changes()=1 THEN 'telemetry_accepted' ELSE NULL END,?,?)").bind(tenantId,JSON.stringify({asset_id:assetId,sequence}),now));
   for (const event of events) {
     statements.push(db.prepare("INSERT INTO managed_assets(tenant_id,asset_id,last_seen_at,status,updated_at) SELECT ?,?,?,'observed',? WHERE EXISTS (SELECT 1 FROM managed_devices WHERE tenant_id=? AND asset_id=? AND last_sequence=?) ON CONFLICT(tenant_id,asset_id) DO UPDATE SET last_seen_at=excluded.last_seen_at,updated_at=excluded.updated_at").bind(tenantId, assetId, event.observedAt, now, tenantId, assetId, sequence));
     statements.push(db.prepare("INSERT INTO managed_telemetry(id,tenant_id,asset_id,sequence,kind,observed_at,data_json,created_at) SELECT ?,?,?,?,?,?,?,? WHERE EXISTS (SELECT 1 FROM managed_devices WHERE tenant_id=? AND asset_id=? AND last_sequence=?)").bind(crypto.randomUUID(), tenantId, assetId, sequence, event.kind, event.observedAt, event.serialized, now, tenantId, assetId, sequence));

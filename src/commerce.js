@@ -1,3 +1,4 @@
+import { verifyPaymentIntent } from "./payment-intents.js";
 const MARKET_BENCHMARKS = Object.freeze([
   { id: "fiverr-website", category: "Website development", observed: "Public listings from $80–$100", source: "https://www.fiverr.com/categories/programming-tech/website-development/" },
   { id: "fiverr-logo", category: "Modern logo design", observed: "Typical $50–$60", source: "https://www.fiverr.com/categories/graphics-design/creative-logo-design/modern" },
@@ -92,7 +93,7 @@ async function createOrder(db, input) {
   const id = crypto.randomUUID();
   const accessToken = crypto.randomUUID() + crypto.randomUUID();
   const now = Date.now();
-  await db.prepare("INSERT INTO service_orders(id,access_token_hash,service_id,buyer_name,buyer_email,buyer_agent_handle,objective,acceptance_criteria,target_scope,authorization_attested,execution_mode,quoted_atomic,max_budget_atomic,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,1,?,?,?,'awaiting_payment',?,?)")
+  await db.prepare("INSERT INTO service_orders(id,access_token_hash,service_id,buyer_name,buyer_email,buyer_agent_handle,objective,acceptance_criteria,target_scope,authorization_attested,execution_mode,quoted_atomic,max_budget_atomic,status,created_at,updated_at,payment_binding_required) VALUES(?,?,?,?,?,?,?,?,?,1,?,?,?,'awaiting_payment',?,?,1)")
     .bind(id, await sha256(accessToken), service.id, buyerName, buyerEmail, buyerAgent, objective, acceptance, scope, mode, service.from_atomic, maxBudget, now, now).run();
   await db.prepare("INSERT INTO order_events(order_id,kind,details,created_at) VALUES(?,'order_created',?,?)").bind(id, JSON.stringify({ service_id: service.id, execution_mode: mode, quoted_atomic: service.from_atomic }), now).run();
   return { id, access_token: accessToken, service: service.name, status: "awaiting_payment", quoted_atomic: service.from_atomic, asset: "USDC", network: "Base", warning: "Save access_token now. Payment does not authorize activity outside target_scope, execution_mode, acceptance criteria, or max budget." };
@@ -130,7 +131,9 @@ async function submitPaymentReceipt(db, id, token, input) {
   if (!order) throw new Error("order not found or unauthorized");
   const txHash = clean(input.tx_hash, 66).toLowerCase();
   if (!HEX_TX.test(txHash)) throw new Error("valid Base transaction hash required");
+  if (order.payment_tx_hash === txHash && order.payment_status !== "unsubmitted") return { id, status: order.status, payment_status: order.payment_status };
   if (order.payment_status !== "unsubmitted") throw new Error("payment receipt already submitted");
+  if (order.payment_binding_required && !await db.prepare("SELECT purpose_id FROM checkout_payment_intents WHERE purpose_type='service_order' AND purpose_id=?").bind(id).first()) throw new Error("Open wallet checkout to create an order-bound payment request first");
   const now = Date.now();
   await claimPaymentReceipt(db, txHash, "service_order", id, [
     db.prepare("UPDATE service_orders SET payment_tx_hash=?,payment_status='pending_verification',status='payment_review',updated_at=? WHERE id=? AND payment_status='unsubmitted'").bind(txHash, now, id),
@@ -212,11 +215,12 @@ async function verifyBaseUsdcTransfer(txHash, treasury, atomic, fetcher = fetch,
 
 async function processPendingOrders(env, fetcher = fetch) {
   if (!env.DB || !/^0x[a-fA-F0-9]{40}$/.test(env.TREASURY_WALLET_ADDRESS || "")) return { configured: false, checked: 0, verified: 0 };
-  const pending = await env.DB.prepare("SELECT service_orders.id,service_orders.service_id,service_orders.objective,service_orders.acceptance_criteria,service_orders.target_scope,service_orders.execution_mode,service_orders.quoted_atomic,service_orders.payment_tx_hash FROM service_orders JOIN payment_receipt_claims ON payment_receipt_claims.tx_hash=service_orders.payment_tx_hash AND payment_receipt_claims.purpose_type='service_order' AND payment_receipt_claims.purpose_id=service_orders.id WHERE service_orders.payment_status='pending_verification' AND service_orders.published_task_id IS NULL ORDER BY service_orders.updated_at LIMIT 10").all();
+  const pending = await env.DB.prepare("SELECT service_orders.id,service_orders.payment_binding_required,service_orders.service_id,service_orders.objective,service_orders.acceptance_criteria,service_orders.target_scope,service_orders.execution_mode,service_orders.quoted_atomic,service_orders.payment_tx_hash FROM service_orders JOIN payment_receipt_claims ON payment_receipt_claims.tx_hash=service_orders.payment_tx_hash AND payment_receipt_claims.purpose_type='service_order' AND payment_receipt_claims.purpose_id=service_orders.id WHERE service_orders.payment_status='pending_verification' AND service_orders.published_task_id IS NULL ORDER BY service_orders.updated_at LIMIT 10").all();
   let verified = 0;
   for (const order of pending.results || []) {
     try {
-      const payment = await verifyBaseUsdcTransfer(order.payment_tx_hash, env.TREASURY_WALLET_ADDRESS, order.quoted_atomic, fetcher);
+      const intent = order.payment_binding_required ? await env.DB.prepare("SELECT * FROM checkout_payment_intents WHERE purpose_type='service_order' AND purpose_id=?").bind(order.id).first() : null;
+      const payment = order.payment_binding_required ? await verifyPaymentIntent(intent,order.payment_tx_hash,fetcher) : await verifyBaseUsdcTransfer(order.payment_tx_hash, env.TREASURY_WALLET_ADDRESS, order.quoted_atomic, fetcher);
       if (!payment.verified) continue;
       const service = serviceById(order.service_id);
       if (!service) throw new Error("verified order references an unsupported service");
