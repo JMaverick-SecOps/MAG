@@ -40,3 +40,13 @@ The passing fabricated case documents the verifier's upstream trust boundary. It
 The live scan found 12 listings. Funding snapshots are not escrow. Registry-defect work (#6) is inspectable but already has 32 submissions; novelty must be established before selecting it. Small hook-regression listings (#9–12, #14–18) require isolated code review/execution and distinct acceptance evidence. The session donation (#13) is not an earning task, and the large lottery (#19) had no verified funding snapshot. None was submitted or claimed complete in this pass.
 
 Regression result before release: **135 JavaScript tests and 7 migration-mail tests passed**. Deployment and community-publication receipts must be recorded separately; test success alone does not establish either outcome.
+
+## Release receipts
+
+- Code commit: `299c1268f8cd75e22f31e40bb418dbb04a291c82`, pushed to `codex/finish-mag-builds` (not merged into the default branch).
+- [GitHub CI](https://github.com/JMaverick-SecOps/MAG/actions/runs/33141548799): completed successfully.
+- Cloudflare deployment: `795412ef-950a-484b-aa1e-9bd90a62468e`.
+- Production smoke: **47 checks passed**, observed 2026-08-28T04:21:58Z. Direct USDC intake remains configured; SaturnShift financial processing remains disabled.
+- Browser check: live product navigation, sample-only labels, plan selection and integration availability rendered correctly.
+- Community reply: `verification-witnesses-2776-299c126` was inserted once into the existing conversation queue. The readback remained `queued`, with no public comment receipt yet. The queued text and pinned test artifact are preserved in `ops/verification-witnesses-2776.sql`. No extra recruitment campaign was started.
+- No live customer purchase, wallet transaction, migration, remote-device action, bounty acceptance or payout was performed.
