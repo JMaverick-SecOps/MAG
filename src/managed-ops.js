@@ -298,9 +298,15 @@ function deviceEnrollmentPreimage({ tenantId, assetId, publicKey, signedAt }) {
   return `mag.device.enroll.v1:${tenantId}:${assetId}:${publicKey}:${signedAt}`;
 }
 
+async function monitoringEntitled(db,tenantId,now=Date.now()) {
+  const subscription=await db.prepare("SELECT plan_id,status,paid_through FROM managed_subscriptions WHERE tenant_id=?").bind(tenantId).first();
+  return !subscription || (["managed-visibility","managed-security"].includes(subscription.plan_id) && subscription.status==="active" && Number(subscription.paid_through)>now);
+}
+
 async function registerDevice(db, tenantId, accessToken, input, now = Date.now()) {
   const tenant = await authorizedTenant(db, tenantId, accessToken);
   if (!tenant || tenant.status !== "active") throw new Error("active tenant authorization required");
+  if (!await monitoringEntitled(db,tenantId,now)) throw new Error("a paid monitoring plan is required for endpoint enrollment");
   const assetId = clean(input.asset_id, 120);
   const publicKey = clean(input.public_key, 100);
   const signedAt = Number(input.signed_at);
@@ -324,6 +330,7 @@ async function telemetryPreimage(input) {
 
 async function ingestTelemetry(db, input, now = Date.now()) {
   const tenantId = clean(input.tenant_id, 80);
+  if (!await monitoringEntitled(db,tenantId,now)) throw new Error("a paid monitoring plan is required for endpoint telemetry");
   const assetId = clean(input.asset_id, 120);
   const sequence = Number(input.sequence);
   const observedAt = Number(input.observed_at);
@@ -354,12 +361,12 @@ async function ingestTelemetry(db, input, now = Date.now()) {
 function managedOpsManifest() {
   return {
     product: "MAG Managed Operations",
-    maturity: "phase_0_evidence_plane",
+    maturity: "subscription_workspace_and_signed_monitoring",
     positioning: "Vendor-neutral RMM/PSA and observability foundation for authorized customer assets.",
     plans: PLANS,
     capabilities: ["tenant-scoped intake", "per-device signed telemetry", "inventory and heartbeat evidence", "patch and backup status", "security finding normalization", "ticket workflow", "customer white-label profile", "validated branding fields", "tenant-scoped evidence dashboard", "approval-ready remediation proposals"],
     deliberately_absent: ["remote shell", "arbitrary command execution", "credential collection", "silent software installation", "automatic remediation", "autonomous purchasing"],
-    authority: "Enrollment covers telemetry only. Every future change action requires a separately recorded customer approval and a bounded runbook.",
+    authority: "Paid monitoring covers signed telemetry and bounded read-only diagnostics on enrolled devices. Change runbooks remain disabled until live certification and additionally require a separate customer approval and local consent. PSA-only subscriptions do not grant monitoring.",
     privacy: "Telemetry fields whose names imply passwords, secrets, tokens, credentials, keys, cookies, or sessions are redacted before storage.",
     device_trust: "Each endpoint has an Ed25519 key, signs a canonical batch digest, and advances a monotonic replay-protection sequence.",
     api: { create_tenant: "POST /api/managed-ops/tenants", enroll_device: "POST /api/managed-ops/tenants/:id/devices", ingest: "POST /api/managed-ops/telemetry", tenant: "GET /api/managed-ops/tenants/:id", branding: "GET|PUT /api/managed-ops/tenants/:id/branding", dashboard: "GET /api/managed-ops/tenants/:id/dashboard", console: "/ops/console", screenconnect: "/ops/screenconnect" },
@@ -655,4 +662,4 @@ function managedOpsPage() {
 </html>`;
 }
 
-export { PLANS, aggregateTenantDashboard, authorizedTenant, createManagedTenant, createTenantBranding, deviceEnrollmentPreimage, ingestTelemetry, managedOpsManifest, managedOpsPage, normalizeEventData, planById, readTenantBranding, readTenantDashboard, registerDevice, scrubTelemetry, telemetryPreimage, updateTenantBranding, validateTelemetryBatch, validateTenant, validateTenantBranding };
+export { monitoringEntitled, PLANS, aggregateTenantDashboard, authorizedTenant, createManagedTenant, createTenantBranding, deviceEnrollmentPreimage, ingestTelemetry, managedOpsManifest, managedOpsPage, normalizeEventData, planById, readTenantBranding, readTenantDashboard, registerDevice, scrubTelemetry, telemetryPreimage, updateTenantBranding, validateTelemetryBatch, validateTenant, validateTenantBranding };

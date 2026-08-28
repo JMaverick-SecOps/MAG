@@ -9,7 +9,7 @@ This release implements checkout and a prepaid subscription service. It does **n
 - Confirmed orders become funded community tasks. A worker must still claim and perform the job; acceptance requires reproducible evidence. Publishing is not a guarantee of staffing or completion.
 - PSA Workspace: 79 USDC/calendar month. Managed Visibility: 49 USDC/calendar month plus 15 USDC per enrolled-device capacity. Prices come from the existing catalog. The managed-security plan remains disabled.
 - Subscription billing is **prepaid, not automatic debit**. The first verified invoice activates the tenant. A renewal invoice is generated seven days before expiry. Cancellation stops future invoices and preserves paid access until expiry. Unpaid subscriptions lose entitlement.
-- Subscriptions include white-label display/colour/logo settings, tenant-scoped tickets/SLA targets, customer agreements, reviewed time entries and draft customer invoices. Draft invoices do not charge the customer's client.
+- Subscriptions include white-label display/colour/logo settings, tenant-scoped tickets/SLA targets, customer agreements, reviewed time entries and draft customer invoices. Draft invoices do not charge the customer's client. Endpoint enrollment, telemetry and runbooks require Managed Visibility; the flat-rate PSA plan cannot bypass per-device monitoring charges. Previously operator-approved non-subscription tenants retain their explicit legacy access.
 - The visible endpoint runner supports signed, opt-in inventory/heartbeat/memory telemetry and bounded diagnostics. It has no arbitrary remote shell, stealth installation, screen capture or auto-start. Restart-service code remains disabled by the production flag and additionally requires exact-target approval and local consent.
 - ScreenConnect inventory integration requires the customer's licensed instance, operator-pinned origin/filter and securely provisioned authentication. Live remote sessions, patch installation, unattended remediation and installer distribution are not certified.
 - Migration and security-review forms record a selected service and calculated quote but request **no payment** until delivery preflight is valid.
@@ -73,4 +73,3 @@ Back up D1 privately before migrations 0021–0024; rehearse them locally and pr
 - [Dropbox HTTP API](https://www.dropbox.com/developers/documentation/http/documentation)
 - [Microsoft IMAP OAuth](https://learn.microsoft.com/en-us/exchange/client-developer/legacy-protocols/how-to-authenticate-an-imap-pop-smtp-application-by-using-oauth)
 - [SaturnShift payment methods and settlement](https://www.saturnshift.io/invoices-and-payment-links/)
-

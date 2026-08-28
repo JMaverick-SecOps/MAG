@@ -114,6 +114,38 @@ test("browser checkout accepts prefilled catalog data and overrides tampered pri
 });
 export { rpcFixture };
 
+test("flat-rate PSA payment never grants per-device monitoring",async t=>{
+ const db=new TestD1();t.after(()=>db.close());const env=environment(db),now=Date.now();
+ const s=await createSubscription(env,subscribe(),now);
+ await subscriptionIntent(env,s.id,s.invoice_id,s.access_token);
+ await submitSubscriptionReceipt(env,s.id,s.invoice_id,s.access_token,{tx_hash:TX});
+ await processSubscriptions(env,rpcFixture(db.prepare("SELECT * FROM checkout_payment_intents").first()),now);
+ const {monitoringEntitled,registerDevice}=await import("../src/managed-ops.js");
+ assert.equal(await monitoringEntitled(db,s.tenant_id,now),false);
+ await assert.rejects(()=>registerDevice(db,s.tenant_id,s.access_token,{}),/paid monitoring/);
+ const {createContract}=await import("../src/psa-billing.js");
+ assert.ok((await createContract(db,s.tenant_id,s.access_token,{name:"Support agreement",customer_name:"Customer",hourly_atomic:"75000000"})).id);
+});
+test("paid monitoring enforces device capacity while allowing a same-device enrollment retry",async t=>{
+ const db=new TestD1();t.after(()=>db.close());const env={...environment(db),MAG_SUBSCRIPTION_PLANS:"managed-visibility"},now=Date.now();
+ const s=await createSubscription(env,{...subscribe(),plan_id:"managed-visibility",max_assets:1},now);
+ await subscriptionIntent(env,s.id,s.invoice_id,s.access_token);
+ await submitSubscriptionReceipt(env,s.id,s.invoice_id,s.access_token,{tx_hash:TX});
+ await processSubscriptions(env,rpcFixture(db.prepare("SELECT * FROM checkout_payment_intents").first()),now);
+ const {monitoringEntitled,registerDevice,deviceEnrollmentPreimage}=await import("../src/managed-ops.js");
+ assert.equal(await monitoringEntitled(db,s.tenant_id,now),true);
+ const key=await crypto.subtle.generateKey({name:"Ed25519"},true,["sign","verify"]);
+ const publicKey=Buffer.from(await crypto.subtle.exportKey("raw",key.publicKey)).toString("base64url");
+ const input=async asset=>({asset_id:asset,public_key:publicKey,signed_at:now,signature:Buffer.from(await crypto.subtle.sign({name:"Ed25519"},key.privateKey,new TextEncoder().encode(deviceEnrollmentPreimage({tenantId:s.tenant_id,assetId:asset,publicKey,signedAt:now})))).toString("base64url")});
+ const first=await input("device-one");
+ await registerDevice(db,s.tenant_id,s.access_token,first,now);
+ await registerDevice(db,s.tenant_id,s.access_token,first,now);
+ const second=await input("device-two");
+ await assert.rejects(()=>registerDevice(db,s.tenant_id,s.access_token,second,now),/asset limit/);
+ assert.equal(db.prepare("SELECT COUNT(*) n FROM managed_devices").first().n,1);
+});
+
+
 test("specialized catalog checkout records scope without requesting an unavailable service payment",async t=>{
  const db=new TestD1();t.after(()=>db.close());const env=environment(db);
  for(const id of ["migration-fabric","static-scan-review","focused-code-review","application-review"]){

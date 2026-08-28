@@ -31,9 +31,10 @@ test("device and telemetry signatures are domain separated",async()=>{
   assert.match(preimage,/^mag\.telemetry\.v1:t1:d1:2:9:[a-f0-9]{64}$/);
 });
 
-test("phase zero manifest forbids remote control and autonomous remediation",()=>{
+test("subscription manifest still forbids remote shell and autonomous remediation",()=>{
   const manifest=managedOpsManifest();
-  assert.equal(manifest.maturity,"phase_0_evidence_plane");
+  assert.equal(manifest.maturity,"subscription_workspace_and_signed_monitoring");
+  assert.match(manifest.authority,/PSA-only subscriptions do not grant monitoring/);
   assert.ok(manifest.deliberately_absent.includes("remote shell"));
   assert.ok(manifest.deliberately_absent.includes("automatic remediation"));
   assert.match(manifest.device_trust,/replay-protection/);

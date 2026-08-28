@@ -1,4 +1,4 @@
-import { authorizedTenant } from "./managed-ops.js";
+import { authorizedTenant, monitoringEntitled } from "./managed-ops.js";
 import { tenantEntitled } from "./subscriptions.js";
 const SERVICE=/^[a-zA-Z][a-zA-Z0-9_.-]{0,79}$/;
 const PROTECTED=/^(windefend|mpssvc|eventlog|securityhealthservice|rpcss|dcomlaunch|samss|lsass|bfe|wuauserv|winmgmt|sense|sshd)$/i;
@@ -18,6 +18,7 @@ async function tenant(db,id,token) {
 }
 async function createJob(db,tenantId,token,input,env={},now=Date.now()) {
   await tenant(db,tenantId,token);
+  if(!await monitoringEntitled(db,tenantId,now))throw new Error("a paid monitoring plan is required for runbooks");
   const spec=validateRunbook(input),asset=String(input.asset_id||"");
   if(spec.runbook==="restart_service"&&env.MAG_RMM_CONTROL_ENABLED!=="true")throw new Error("change runbooks require live acceptance certification before activation");
   if(!/^[0-9a-f-]{36}$/i.test(input.request_key||""))throw new Error("request_key required");
@@ -45,7 +46,7 @@ async function devicePreimage(action,input) {
 async function authenticateDevice(db,action,input,now) {
   if(!/^[0-9a-f-]{36}$/i.test(input.nonce||"")||!Number.isSafeInteger(input.signed_at)||Math.abs(now-input.signed_at)>60000)throw new Error("fresh signed device request required");
   const d=await db.prepare("SELECT d.public_key FROM managed_devices d JOIN managed_tenants t ON t.id=d.tenant_id WHERE d.tenant_id=? AND d.asset_id=? AND d.status='active' AND t.status='active'").bind(input.tenant_id,input.asset_id).first();
-  if(!d||!await tenantEntitled(db,input.tenant_id,now))throw new Error("active enrolled and entitled device required");
+  if(!d||!await tenantEntitled(db,input.tenant_id,now)||!await monitoringEntitled(db,input.tenant_id,now))throw new Error("active enrolled and entitled device required");
   const key=await crypto.subtle.importKey("raw",decode(d.public_key),{name:"Ed25519"},false,["verify"]);
   if(!await crypto.subtle.verify({name:"Ed25519"},key,decode(input.signature),new TextEncoder().encode(await devicePreimage(action,input))))throw new Error("invalid device signature");
   await db.prepare("INSERT INTO managed_device_requests(tenant_id,asset_id,nonce,created_at) VALUES(?,?,?,?)").bind(input.tenant_id,input.asset_id,input.nonce,now).run();
