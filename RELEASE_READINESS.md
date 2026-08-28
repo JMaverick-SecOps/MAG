@@ -1,7 +1,22 @@
-# MAG release candidate — 2026-08-27
+# MAG production release — 2026-08-27
 
-This is a tested release candidate, not a claim that every service is operational.
+This is a production deployment of the tested components, not a claim that every service is operational. Paid intake and SaturnShift remain disabled pending the requirements below.
 No wallet was signed, no funds were moved, and no provider payment was fabricated.
+
+## Production deployment receipt
+
+- Deployed at **2026-08-28 02:20 UTC** (August 27, 8:20 PM America/Denver).
+- Worker: `mavverick-scout`; [production site](https://mavverick-scout.magai.workers.dev).
+- Version: `df8678f4-c7b3-4648-8221-8be89b720f57`; application commit: `b774b8f` on `codex/finish-mag-builds`.
+- Preserved existing vars and secret bindings. The 15-minute cron and `mag-migration-orchestrator` binding are deployed; no migration instance was started. Players
+- D1 migrations **0011–0020 applied** after a successful in-memory rehearsal of the production export. All 20 migrations are tracked and none remain pending.
+- A private pre-release SQL export is stored outside Git. SHA-256: `59d5328913f93bec81dda5ea74acbf88c159552af430d46bf9a2540858f57bfb`. A Time Travel recovery bookmark was also recorded privately.
+- Production `PRAGMA quick_check` returned `ok`; `foreign_key_check` returned no violations. Existing task, order, bounty, member-application and audit counts were preserved. D1 does not expose the attempted SQLite `integrity_check`; the documented quick-check was used instead.
+- **90 tests passed**, all release JavaScript passed syntax checks, and the final Worker dry-run passed (378.51 KiB / 89.72 KiB gzip).
+- **34 non-monetary live smoke checks passed** at 02:22 UTC. Re-run with `node scripts/smoke-production.mjs`. Service cards were also clicked in the live browser: the SOW card prefilled 49 USDC and `draft_only`; the operations preview and ScreenConnect boundary rendered correctly.
+- Live payment status: `paid_intake_ready=false`, `saturnshift.configured=false`. Paid intake returned 503, the disabled webhook returned 503, unauthenticated admin access returned 401, and an invalid private order token returned 404. No order, bounty, provider event or payment receipt was created by the tests.
+
+The previous Worker version is `88e57e7a-3407-461c-a74c-cbb2caf216f5`. Any rollback must account for schema compatibility and new records; do not automatically restore the database or overwrite post-release activity.
 
 ## Implemented and locally verified
 
@@ -55,7 +70,7 @@ Use Node 24, `npm ci`, then `npm run check`. The current suite passes 90 tests, 
 
 Run `npx wrangler deploy --dry-run` from an isolated build directory if OneDrive prevents Wrangler from creating temporary files. Preserve the existing dependency lockfile. Never copy `.dev.vars`, credentials or a production database export into Git.
 
-The inspected production database has migrations 0011–0020 pending. Back up the exact database, review migration effects and obtain explicit production schema/payment-release authorization before applying them. Do not deploy this Worker against an older schema. Existing CI runs tests and builds; schema migration is a separate release operation, not an unattended CI side effect.
+The owner authorized this production release, and migrations 0011–0020 have been applied. Future schema changes still require a fresh backup, effect review, rehearsal and release authorization. Do not deploy this Worker against an older schema. Existing CI runs tests and builds; schema migration remains a separate release operation, not an unattended CI side effect.
 
 After authorized release, preserve deployed vars (`--keep-vars`), verify `/health`, `/hire`, `/ops`, `/ops/console`, `/ops/screenconnect`, `/orders/status` and all branding assets. Confirm unconfigured payment adapters still refuse requests. Real provider tests must use separate test orders and must not fabricate revenue or completion records.
 
