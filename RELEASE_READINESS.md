@@ -1,4 +1,36 @@
-# MAG production release — 2026-08-27
+# MAG production release — current status
+
+Current production is version `51d23997-c588-4f61-aafa-41a14359ba76`, application commit `36474273b55d0a46cb2ad1618ae141da5a3d76c4` on `codex/finish-mag-builds`. See [commercial operations](COMMERCIAL_OPERATIONS.md) for current product capabilities and remaining integration work.
+
+## Checkout and subscriptions release — August 27, 2026
+
+- Deployment and final smoke validation completed by **2026-08-28 03:38 UTC** (August 27, 9:38 PM America/Denver).
+- **All 42 service cards are clickable**. Service, price, execution mode and acceptance defaults are prefilled and validated server-side. Buyers enter their project information and approve the displayed scope; public task briefs are explicitly disclosed.
+- **Direct Base-USDC checkout is enabled.** The self-hosted wallet flow fills the recipient, amount, chain and invoice reference. Receipt capture is automatic. Customer wallet approval is still required; no allowance or treasury signing was introduced.
+- New purchases require exact invoice-bound transfer calldata, two independent RPC observations and finalized blocks. Receipt retries are idempotent. Ambiguous wallet sends are not automatically retried.
+- **PSA Workspace and Managed Visibility subscriptions are enabled**, with prepaid monthly invoices, entitlement checks, seven-day renewal invoicing, cancellation and expiry. This is not automatic wallet debit. Endpoint monitoring requires the per-device monitoring plan; PSA-only payment cannot enroll endpoints.
+- Contracts, reviewed time entries, draft customer invoices and secure workspace sessions are implemented. The visible endpoint runner has signed telemetry, bounded diagnostics and a durable result outbox. Customer endpoint setup links are in the console. No endpoint was installed or enrolled during this release.
+- **120 JavaScript tests + 7 IMAP tests passed**, along with syntax checks, the isolated Cloudflare dry run (445.03 KiB / 106.48 KiB gzip), and [GitHub CI](https://github.com/JMaverick-SecOps/MAG/actions/runs/33139408029).
+- **39 live smoke checks passed** at 2026-08-28T03:38:09.425Z; paid intake reported ready, unauthenticated admin access was rejected, unsigned device requests were rejected and the unverified SaturnShift webhook stayed disabled. The live wallet asset matched the reviewed source.
+- D1 migrations **0021–0024 applied** after restoring a fresh private backup into isolated local storage and rehearsing the upgrade. Both local and production quick checks passed, with no foreign-key violations. Backup SHA-256: `6b4ecfddbe9632b7ca6affd163dd81ace95281e90578926fb1177db945887a1f`. Backup contents remain outside Git with a restricted Windows ACL.
+- A random owner-review credential was securely provisioned via stdin. Its recovery copy is Windows-user DPAPI-encrypted outside Git. Authenticated owner access was verified; values were never printed. Safe signing remains owner-controlled.
+- Production counts after smoke tests: **0 orders, 0 subscriptions, 0 enrolled devices, 0 payment receipts and 0 migration projects**. No revenue, live payment, completed migration or remote-control action is claimed.
+
+### Still blocked or deliberately unavailable
+
+SaturnShift's public key is provisioned, but its authoritative webhook and registration contract is not verified; **card/ACH checkout remains disabled**. Card/ACH fiat settlement is not automatically USDC. No treasury conversion or reserve spending is implemented.
+
+Microsoft/Google/Dropbox and verified-TLS IMAP adapter libraries now exist and pass mocked tests. A deployed private connector service, per-customer vault/OAuth provisioning and real test-tenant certification are still required. Migration/security forms hold payment until supported delivery capacity passes preflight. Full-fidelity calendars, contacts, native-document conversion and all provider edge cases are not certified.
+
+ScreenConnect still needs an authorized licensed instance and scoped credentials for live tests. Service restarts remain disabled. Unattended patching, arbitrary scripts, full remote control and a general-purpose autonomous worker fleet are not claimed. Funded community tasks still need an actual worker and evidence-backed acceptance. Email-provider delivery remains unconfigured.
+
+The previous compatible checkout version is `06150bcd-cabb-4257-8fc9-ab9ce4e825f2`; the earlier pre-subscription code version is `df8678f4-c7b3-4648-8221-8be89b720f57`. Roll back code only with schema/record compatibility reviewed. Do not overwrite customer activity with a database restore.
+
+## Historical release record — earlier August 27 deployment
+
+The remainder records the earlier deployment and its then-current limitations. Where it differs, the current status above takes precedence.
+
+
 
 This is a production deployment of the tested components, not a claim that every service is operational. Paid intake and SaturnShift remain disabled pending the requirements below.
 No wallet was signed, no funds were moved, and no provider payment was fabricated.
