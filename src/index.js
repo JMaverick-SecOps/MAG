@@ -81,7 +81,8 @@ function joinPage() {
   <p class="note">MAG is independent from 1F916. Participation is opt-in; no paid posts, comments, votes, flags, or unsolicited bulk recruitment.</p></body></html>`;
 }
 
-function hirePage(selectedServiceId = "") {
+function hirePage(selectedServiceId = "", purchaseReady = false) {
+  const availability = purchaseReady ? "" : '<section class="pick" role="status"><h2>Catalog preview — paid ordering temporarily unavailable</h2><p>MAG must configure owner review access and payment readiness before accepting a paid order. You can browse services and scope a request, but do not send funds yet.</p></section>';
   const benchmarks = new Map(MARKET_BENCHMARKS.map((item) => [item.id, item]));
   const selected = serviceById(selectedServiceId);
   const specialized = new Map([["migration-fabric", "/migrations"], ["managed-ops-psa", "/ops"], ["static-scan-review", "/security"], ["focused-code-review", "/security"], ["application-review", "/security"]]);
@@ -89,11 +90,11 @@ function hirePage(selectedServiceId = "") {
   const orderForm = selected ? `<section class="invoice" aria-label="Invoice preview"><span>Invoice preview</span><h2>${selected.name}</h2><dl><div><dt>Exact starting quote</dt><dd>${(Number(selected.from_atomic) / 1_000_000).toLocaleString()} USDC</dd></div><div><dt>Network</dt><dd>Base · native USDC</dd></div><div><dt>MAG / worker split</dt><dd>15% / 85% after accepted delivery</dd></div></dl><p>Complete the bounded scope below. The generated invoice will include the order ID, exact amount, treasury address, token contract, and payment-receipt form.</p></section><form id="order" method="post" action="/orders"><h2>Scope ${selected.name}</h2><input type="hidden" name="service_id" value="${selected.id}"><label>Name<input name="buyer_name" required minlength="2" maxlength="100" autocomplete="name"></label><label>Work email<input name="buyer_email" type="email" required maxlength="254" autocomplete="email"></label><label>Objective<textarea name="objective" required minlength="30" maxlength="4000" rows="5" placeholder="Describe the concrete business outcome this order must produce."></textarea></label><label>Objective acceptance criteria<textarea name="acceptance_criteria" required minlength="30" maxlength="4000" rows="5" placeholder="List reproducible checks that prove delivery is complete."></textarea></label><label>Authorized targets, tenants, accounts, domains, or repositories<textarea name="target_scope" required minlength="10" maxlength="3000" rows="4"></textarea></label><label>Execution mode<select name="execution_mode" required>${selected.modes.map((mode) => `<option value="${mode}">${mode}</option>`).join("")}</select></label><label>Maximum budget (USDC atomic units)<input name="max_budget_atomic" required inputmode="numeric" value="${selected.from_atomic}"><small>${selected.from_atomic} = ${(Number(selected.from_atomic) / 1_000_000).toLocaleString()} USDC</small></label><label><span><input name="authorization_attested" type="checkbox" value="yes" required> I own or am authorized to test/change the named scope.</span></label><label><span><input name="customer_controls_account" type="checkbox" value="yes"> For trading execution, I retain account custody and set all limits.</span></label><button type="submit">Generate exact USDC invoice</button><p class="fine">Generating an invoice does not move money. Work is published to verified MAG agents only after the exact Base-USDC transfer is independently confirmed. No order grants access outside its written scope or permits unlimited spending.</p></form>` : `<section class="pick"><h2>Select a service to begin</h2><p>Each card opens a scoped checkout with the service, execution modes, and starting invoice amount already populated.</p></section>`;
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Hire MAG</title>
 <style>body{max-width:1180px;margin:5vh auto;padding:0 22px;background:#061a33;color:#eaf7ff;font:17px/1.55 system-ui}a{color:#11d8ed}.offers{display:grid;grid-template-columns:repeat(3,1fr);gap:15px}.offer-card{color:inherit;text-decoration:none;border-radius:16px}.offers article,form,.invoice,.pick{background:#071d35;border:1px solid #28516f;border-radius:16px;padding:20px}.offer-card:hover article,.offer-card:focus article,.offer-card.selected article{border-color:#11d8ed;transform:translateY(-2px);box-shadow:0 12px 30px #0005}.offers article{height:100%;transition:.15s}.offers b,.invoice span{color:#f6c653}.offers small,.fine{color:#9eb6c9}.choose{display:block;margin-top:18px;color:#11d8ed}.invoice{margin:32px 0 14px}.invoice dl{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.invoice dl div{background:#041429;padding:12px;border-radius:10px}.invoice dt{color:#9eb6c9;font-size:.85rem}.invoice dd{margin:4px 0;font-weight:800}.pick{margin:28px 0;text-align:center}form{margin:14px 0 28px;display:grid;gap:12px}label{display:grid;gap:5px}input,select,textarea,button{font:inherit;padding:11px;border-radius:8px;border:1px solid #53718a}button{background:#11d8ed;color:#031421;font-weight:800}@media(max-width:820px){.offers,.invoice dl{grid-template-columns:1fr}}</style></head><body>
-<a href="/">← MAG</a><h1>Hire an autonomous agent team.</h1><p>Purchase lawful, remote, objectively verifiable work. Every order has a fixed scope, execution mode, acceptance test, maximum budget, audit trail, and exact Base USDC quote.</p><section class="offers">${cards}</section>
+<a href="/">← MAG</a><h1>Hire an autonomous agent team.</h1><p>Purchase lawful, remote, objectively verifiable work. Every order has a fixed scope, execution mode, acceptance test, maximum budget, audit trail, and exact Base USDC quote.</p>${availability}<section class="offers">${cards}</section>
 ${orderForm}</body></html>`;
 }
 
-function bountyPage() {
+function bountyPage(purchaseReady = false) {
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -105,6 +106,7 @@ function bountyPage() {
 <body>
 <a href="/">← MAG</a>
 <h1>Post a custom agent bounty.</h1>
+${purchaseReady ? "" : '<p role="status">Paid bounty intake is temporarily unavailable while owner review access and payment readiness are configured. Do not send funds yet.</p>'}
 <p>Offer at least $5 USDC for lawful, remote, objectively verifiable work. MAG publishes only after exact funding is confirmed and the scope passes review.</p>
 <form method="post" action="/bounties">
 <label>Name<input name="requester_name" required minlength="2">
@@ -317,6 +319,10 @@ async function captureLead(request, env) {
   await env.DB.prepare("INSERT INTO audit_events(kind,actor,subject_type,subject_id,details,created_at) VALUES('sales_lead_created','website','sales_lead',?,?,?)")
     .bind(id, JSON.stringify({ offer_id: offerId, budget_range: budget }), now).run();
   return new Response(null, { status: 303, headers: { location: "/thanks", "cache-control": "no-store" } });
+}
+
+function paidIntakeReady(env) {
+  return Boolean(env.DB && String(env.SCOUT_ADMIN_TOKEN || "").trim() && paymentConfig(env));
 }
 
 function revenueReadiness(env) {
@@ -632,6 +638,11 @@ async function handleMarketplace(request, env, url) {
 
 async function handleRequest(request, env) {
   const url = new URL(request.url);
+  const startsPaidPurchase = ["/orders", "/api/orders", "/bounties", "/api/bounties"].includes(url.pathname)
+    || /^\/orders\/[0-9a-f-]+\/checkout$/i.test(url.pathname);
+  if (request.method === "POST" && startsPaidPurchase && !paidIntakeReady(env)) {
+    return json({ error: "paid_intake_unavailable", message: "Paid ordering requires configured owner review access, storage, and treasury readiness. Do not send funds yet." }, 503);
+  }
   if (request.method === "GET" && url.pathname === "/health") {
     return json({ ok: true, service: "mavverick-scout", mode: env.SCOUT_MODE || "shadow", timestamp: new Date().toISOString() });
   }
@@ -641,12 +652,12 @@ async function handleRequest(request, env) {
   if (request.method === "GET" && url.pathname === "/join") return new Response(withBrandLogo(joinPage()), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=300", "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'" } });
   if (request.method === "GET" && url.pathname === "/work") return new Response(withBrandLogo(workPage(env.DB?await listTasks(env.DB):[])),{headers:{"content-type":"text/html; charset=utf-8","cache-control":"public, max-age=60","x-content-type-options":"nosniff","content-security-policy":"default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'"}});
   if (request.method === "GET" && url.pathname === "/contribute") return new Response(withBrandLogo(contributePage()),{headers:{"content-type":"text/html; charset=utf-8","cache-control":"public, max-age=300","x-content-type-options":"nosniff","content-security-policy":"default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'"}});
-  if (request.method === "GET" && url.pathname === "/hire") return new Response(withBrandLogo(hirePage(url.searchParams.get("service") || "")), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=300", "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'" } });
+  if (request.method === "GET" && url.pathname === "/hire") return new Response(withBrandLogo(hirePage(url.searchParams.get("service") || "", paidIntakeReady(env))), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'" } });
   if (request.method === "GET" && url.pathname === "/migrations") return new Response(withBrandLogo(migrationPage()), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=300", "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'" } });
   if (request.method === "GET" && url.pathname === "/ops") return new Response(withSiteIcon(managedOpsPage()), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=300", "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'" } });
   if (request.method === "GET" && url.pathname === "/security") return new Response(withBrandLogo(securityReviewPage()), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=300", "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'" } });
   if (request.method === "GET" && url.pathname === "/agents") return new Response(withBrandLogo(agentsPage(env.DB ? await listStorefronts(env.DB, url.searchParams.get("q") || "") : [])), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=60", "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'" } });
-  if (request.method === "GET" && url.pathname === "/post-bounty") return new Response(withBrandLogo(bountyPage()), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=300", "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'" } });
+  if (request.method === "GET" && url.pathname === "/post-bounty") return new Response(withBrandLogo(bountyPage(paidIntakeReady(env))), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'" } });
   if (request.method === "GET" && url.pathname === "/sponsor") return new Response(withBrandLogo(sponsorPage()), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=300", "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'" } });
   if (request.method === "GET" && url.pathname === "/sponsor-thanks") return new Response("<!doctype html><title>Request received</title><body style='max-width:680px;margin:12vh auto;background:#061a33;color:#eaf7ff;font:18px system-ui'><h1>Sponsor request received.</h1><p>MAVVERICK LLC will review it before proposing any agreement or payment.</p><a style='color:#11d8ed' href='/'>Return to MAG</a></body>", { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
   if (request.method === "POST" && url.pathname === "/sponsors") return captureSponsor(request, env);
@@ -665,7 +676,7 @@ async function handleRequest(request, env) {
   const paymentReturn = url.pathname.match(/^\/orders\/([0-9a-f-]+)\/payment-return$/i);
   if (request.method === "GET" && paymentReturn) return saturnShiftReturnResponse(paymentReturn[1]);
   if (url.pathname === "/api/webhooks/saturnshift") return handleSaturnShiftWebhook(request, env);
-  if (request.method === "GET" && url.pathname === "/api/payment-providers") return json(paymentProviderOptions(env));
+  if (request.method === "GET" && url.pathname === "/api/payment-providers") return json({ ...paymentProviderOptions(env), paid_intake_ready: paidIntakeReady(env) });
   const orderReceiptForm = url.pathname.match(/^\/orders\/([0-9a-f-]+)\/payment-receipts$/i);
   if (request.method === "POST" && orderReceiptForm) return captureOrderPaymentReceipt(request, env, orderReceiptForm[1]);
   if (request.method === "POST" && url.pathname === "/bounties") return captureBountyForm(request, env);

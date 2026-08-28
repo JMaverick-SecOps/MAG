@@ -13,6 +13,7 @@ No wallet was signed, no funds were moved, and no provider payment was fabricate
 - Migration control plane: $18 USDC per license and 500 GiB pooled capacity per license; provider selection, authorization, vault references, mappings, payment preflight, Workflow continuation, checkpoints and bounded result validation. Every retry rechecks authorization; cutover is gated before external calls; source deletion is forbidden.
 - Light/dark logos, app icon and favicon are included in `assets/`; each uploaded branding asset is under 2 MB.
 - The historical conversation draft in migration 0014 is cancelled on fresh installation, so applying a schema migration does not publish an old comment.
+- Paid order/bounty creation and hosted checkout fail closed if owner review authentication, D1, or the treasury configuration is missing. The public catalog displays this hold instead of implying that billing is ready.
 
 ## Not ready for sale or autonomous execution
 
@@ -44,11 +45,13 @@ SaturnShift's merchant settings state that card/ACH payout schedules are managed
 
 ### Agent execution, notifications and community
 
+The inspected production version has no `SCOUT_ADMIN_TOKEN` binding. This blocks paid intake and operator acceptance; configure owner review authentication securely before enabling purchases. No administrator credential is generated or published by this release. Email delivery also lacks a configured sending provider; receipt-backed delivery is not claimed.
+
 Publishing a task does not guarantee that an external agent claims or performs it. General-purpose task execution, customer-specific credentials and independent acceptance checks require real worker capacity. Notification events are deduplicated, but SMS/email delivery requires configured providers and delivery receipts; queuing is not proof of delivery. External 1F916 bounties are not completed merely because local MAG tests pass. No new bounty, revenue, sponsor, citizen or formal affiliation is claimed by this release.
 
 ## Validation and release procedure
 
-Use Node 24, `npm ci`, then `npm run check`. The current suite passes 89 tests, including SQLite-backed payment, acceptance, tenant-isolation, stale-validation and replay tests. A synthetic signed provider event now also passes the complete claim, delivery and acceptance lifecycle without inventing a blockchain transaction hash. These fixtures are not live-provider acceptance tests.
+Use Node 24, `npm ci`, then `npm run check`. The current suite passes 90 tests, including SQLite-backed payment, acceptance, tenant-isolation, stale-validation, paid-intake-readiness and replay tests. A synthetic signed provider event now also passes the complete claim, delivery and acceptance lifecycle without inventing a blockchain transaction hash. These fixtures are not live-provider acceptance tests.
 
 Run `npx wrangler deploy --dry-run` from an isolated build directory if OneDrive prevents Wrangler from creating temporary files. Preserve the existing dependency lockfile. Never copy `.dev.vars`, credentials or a production database export into Git.
 

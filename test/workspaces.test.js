@@ -38,7 +38,7 @@ test("live white-label console renders scoped database metrics and working ticke
 test("customer invoice is clickable and private status never accepts an invalid token",async t=>{
  const db=new TestD1();t.after(()=>db.close());
  const form=new URLSearchParams({buyer_name:"Buyer",buyer_email:"buyer@example.test",service_id:"website-starter",objective:"Build an accessible one page website for our approved demo.",acceptance_criteria:"All responsive checks and accessibility tests pass in the artifact.",target_scope:"Customer-owned example.test staging repository",execution_mode:"pull_request",max_budget_atomic:"99000000",authorization_attested:"yes"});
- const response=await worker.fetch(new Request("https://example.test/orders",{method:"POST",body:form}),{DB:db,TREASURY_WALLET_ADDRESS:"0x"+"a".repeat(40)});
+ const response=await worker.fetch(new Request("https://example.test/orders",{method:"POST",body:form}),{DB:db,SCOUT_ADMIN_TOKEN:"test-only-owner-token",TREASURY_WALLET_ADDRESS:"0x"+"a".repeat(40)});
  assert.equal(response.status,201);const body=await response.text();
  assert.match(body,/View order progress and delivery/);
  assert.doesNotMatch(body,/Open SaturnShift payment options/);
@@ -54,4 +54,26 @@ test("generic orders cannot bypass preflight for unconfigured products",async t=
  const db=new TestD1();t.after(()=>db.close());
  for(const service_id of ["migration-fabric","managed-ops-psa","static-scan-review"]) await assert.rejects(()=>createOrder(db,{service_id}),/preflight/);
  assert.equal(db.prepare("SELECT COUNT(*) n FROM service_orders").first().n,0);
+});
+
+test("paid intake fails closed without owner review access, storage, or treasury configuration", async t => {
+ const db = new TestD1(); t.after(() => db.close());
+ const ready = { DB: db, SCOUT_ADMIN_TOKEN: "test-only-owner-token", TREASURY_WALLET_ADDRESS: "0x" + "a".repeat(40) };
+ for (const missing of ["DB", "SCOUT_ADMIN_TOKEN", "TREASURY_WALLET_ADDRESS"]) {
+  const unavailable = { ...ready, [missing]: undefined };
+  for (const path of ["/orders", "/api/orders", "/bounties", "/api/bounties", "/orders/00000000-0000-4000-8000-000000000001/checkout"]) {
+   const res = await worker.fetch(new Request("https://example.test" + path, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }), unavailable);
+   assert.equal(res.status, 503);
+   assert.equal((await res.json()).error, "paid_intake_unavailable");
+  }
+  const catalog = await worker.fetch(new Request("https://example.test/hire?service=website-starter"), unavailable);
+  assert.match(await catalog.text(), /paid ordering temporarily unavailable/);
+  assert.equal(catalog.headers.get("cache-control"), "no-store");
+  const providers = await worker.fetch(new Request("https://example.test/api/payment-providers"), unavailable);
+  assert.equal((await providers.json()).paid_intake_ready, false);
+ }
+ assert.equal(db.prepare("SELECT COUNT(*) n FROM service_orders").first().n, 0);
+ assert.equal(db.prepare("SELECT COUNT(*) n FROM bounty_requests").first().n, 0);
+ const catalog = await worker.fetch(new Request("https://example.test/hire"), ready);
+ assert.doesNotMatch(await catalog.text(), /paid ordering temporarily unavailable/);
 });
