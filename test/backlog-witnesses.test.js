@@ -2,7 +2,7 @@
 // Synthetic data only. Source discussion: https://1f916.ai/api/comment/27850
 import test from "node:test";
 import assert from "node:assert/strict";
-import { compareBacklogSnapshots } from "../scripts/backlog-evidence.mjs";
+import { classifyDisagreementFalsifier, compareBacklogSnapshots } from "../scripts/backlog-evidence.mjs";
 const DAY=86400000, T=100*DAY;
 const row=(id,age,version="v1")=>({id,version,updated_at:T-age*DAY});
 const snapshot=(items,observed_at=T)=>({scope:"synthetic-open-backlog-v1",complete:true,total:items.length,observed_at,items});
@@ -63,4 +63,58 @@ test("empty observations do not manufacture zero age or a defined slope",()=>{
   const result=compareBacklogSnapshots(snapshot([]),snapshot([],T+DAY));
   assert.deepEqual(result.median_ages,[null,null]);assert.equal(result.age_slope,null);
   assert.equal(result.continuous_inactivity_proven,false);
+});
+
+test("unwitnessed disagreement remains explicitly unwitnessed",()=>{
+  const result=classifyDisagreementFalsifier({
+    candidate_event:"reader A and reader B disagree under a shared-selection fault",
+    status:"unwitnessed",
+    causal_cut:"selection predicate before both readers",
+    assumptions:["both readers receive the same selected population"],
+    challenge_surface:"construct a same-boundary fork under the selection fault"
+  });
+  assert.equal(result.state,"unwitnessed");
+  assert.equal(result.independence_proven,false);
+  assert.equal(result.fault_relevance_proven,false);
+});
+
+test("observed disagreement requires a checkable receipt but does not prove relevance",()=>{
+  const base={
+    candidate_event:"A passes while B fails",
+    status:"observed",
+    assumptions:["same claim and observation boundary"],
+    challenge_surface:"replay the supplied fixture"
+  };
+  assert.equal(classifyDisagreementFalsifier(base).state,"unknown");
+  const result=classifyDisagreementFalsifier({...base,observation_receipt:"https://example.invalid/fixture.json"});
+  assert.equal(result.state,"observed_divergence");
+  assert.equal(result.input_is_evidence,false);
+  assert.equal(result.fault_relevance_proven,false);
+});
+
+test("structural exclusion requires a closed model and witnessed causal cut",()=>{
+  const base={
+    candidate_event:"A and B fork under the named fault",
+    status:"structurally_excluded",
+    assumptions:["the named dependency graph is complete"],
+    challenge_surface:"add a path that bypasses the shared cut",
+    causal_cut:"shared filter"
+  };
+  assert.equal(classifyDisagreementFalsifier(base).state,"unwitnessed");
+  const result=classifyDisagreementFalsifier({
+    ...base,closed_model:true,causal_cut_evidence:"https://example.invalid/model.json"
+  });
+  assert.equal(result.state,"structurally_excluded");
+  assert.equal(result.independence_proven,false);
+  assert.equal(result.input_is_evidence,false);
+});
+
+test("unbounded or unrecognized falsifier descriptions are unknown",()=>{
+  assert.equal(classifyDisagreementFalsifier(null).state,"unknown");
+  assert.equal(classifyDisagreementFalsifier({
+    candidate_event:"fork",status:"maybe",assumptions:[],challenge_surface:"challenge"
+  }).state,"unknown");
+  assert.equal(classifyDisagreementFalsifier({
+    candidate_event:"x".repeat(1001),status:"unwitnessed",assumptions:[],challenge_surface:"challenge"
+  }).state,"unknown");
 });
