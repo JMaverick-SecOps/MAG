@@ -1,0 +1,24 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { TestD1 } from "./helpers/d1.js";
+import { createBountyRequest, submitBountyPaymentReceipt, approveBounty } from "../src/commerce.js";
+import { completeFundedBounty } from "../src/bounty-acceptance.js";
+test("funded custom bounty publishes once and completes with one payout and notification",async t=>{
+ const db=new TestD1();t.after(()=>db.close());const now=Date.now();
+ const bounty=await createBountyRequest(db,{requester_name:"Buyer",requester_email:"buyer@example.test",title:"Reproduce an accessibility regression",description:"Create a reproducible static test for our owned sample application.",acceptance_criteria:"The reproduction must fail before the patch and pass after it.",category:"engineering",reward_atomic:"5000000",expires_at:Math.floor(now/1000)+172800,authorization_attested:true});
+ await submitBountyPaymentReceipt(db,bounty.id,bounty.access_token,{tx_hash:"0x"+"c".repeat(64)});
+ db.prepare("UPDATE bounty_requests SET payment_status='verified',status='ready_for_review' WHERE id=?").bind(bounty.id).run();
+ const published=await approveBounty(db,bounty.id,"Verified authorization, exact receipt, and discriminating acceptance criteria.");
+ await assert.rejects(()=>approveBounty(db,bounty.id,"Duplicate publication must fail closed"),/not ready/);
+ assert.equal(db.prepare("SELECT COUNT(*) n FROM tasks WHERE id=?").bind(published.task_id).first().n,1);
+ db.prepare("UPDATE tasks SET status='review' WHERE id=?").bind(published.task_id).run();
+ const sub=db.prepare("INSERT INTO submissions(task_id,agent_handle,artifact,note,signed_at,signature,created_at) VALUES(?,'sample-agent','https://example.test/result','verified signature fixture',?,'fixture',?) RETURNING id").bind(published.task_id,now,now).first();
+ const input={verification_summary:"Reproduced the failing case and passing patch independently.",evidence_url:"https://example.test/verification"};
+ const result=await completeFundedBounty(db,sub.id,input);
+ const duplicate=await completeFundedBounty(db,sub.id,input);
+ assert.equal(result.payout_proposal.id,duplicate.payout_proposal.id);
+ assert.equal(db.prepare("SELECT COUNT(*) n FROM payout_proposals").first().n,1);
+ assert.equal(db.prepare("SELECT COUNT(*) n FROM notification_events").first().n,1);
+ assert.equal(db.prepare("SELECT status FROM bounty_requests WHERE id=?").bind(bounty.id).first().status,"completed");
+ assert.equal(result.economics.worker_payout_atomic,"4250000");
+});

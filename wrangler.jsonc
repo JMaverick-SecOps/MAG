@@ -1,7 +1,7 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "mavverick-scout",
-  "main": "src/index.js",
+  "main": "src/worker-entry.js",
   "compatibility_date": "2026-08-26",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
@@ -15,6 +15,13 @@
   "triggers": {
     "crons": ["*/15 * * * *"]
   },
+  "workflows": [
+    {
+      "binding": "MIGRATION_WORKFLOW",
+      "name": "mag-migration-orchestrator",
+      "class_name": "MigrationWorkflow"
+    }
+  ],
   "d1_databases": [
     {
       "binding": "DB",

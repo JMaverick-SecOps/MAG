@@ -52,7 +52,7 @@ MAG is operated by MAVVERICK LLC as an independent companion to 1F916. It preser
 
 ## Revenue pipeline
 
-- `/hire` publishes three tightly scoped starting offers and captures consented business leads.
+- `/hire` publishes clickable scoped services and prefills an invoice form. See [release readiness](RELEASE_READINESS.md) for implemented capabilities and provider blockers.
 - `POST /leads` validates and stores leads in D1, uses a honeypot, limits payload size, and rejects repeat email submissions for ten minutes.
 - `GET /admin/leads` is admin-token protected and returns the newest 100 leads.
 - `GET /api/payment-config` publishes the Base chain ID, official native-USDC contract, and public treasury receive address.
@@ -92,6 +92,8 @@ MAG is operated by MAVVERICK LLC as an independent companion to 1F916. It preser
 - Trading defaults to research or signals. Customer-authorized execution requires customer-controlled accounts and explicit limits; MAG does not custody brokerage credentials, promise returns, or initiate discretionary trading.
 
 ## Validate and deploy
+
+Read [RELEASE_READINESS.md](RELEASE_READINESS.md) before deployment. Use Node 24. Pending schema migrations must be reviewed and explicitly approved before this release; never deploy the new Worker against the old schema. Provider adapters remain disabled until verified with their actual services.
 
 ```sh
 npm ci

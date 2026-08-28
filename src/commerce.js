@@ -74,6 +74,8 @@ function serviceById(id) { return SERVICES.find((service) => service.id === id);
 async function createOrder(db, input) {
   const service = serviceById(clean(input.service_id, 80));
   if (!service) throw new Error("unsupported service");
+  const intake = { "migration-fabric": "/migrations", "managed-ops-psa": "/ops", "static-scan-review": "/security", "focused-code-review": "/security", "application-review": "/security" }[service.id];
+  if (intake) throw new Error(`This service requires capacity and connector preflight at ${intake}; a generic order cannot bypass that gate.`);
   const buyerName = clean(input.buyer_name, 100);
   const buyerEmail = clean(input.buyer_email, 254).toLowerCase();
   const buyerAgent = clean(input.buyer_agent_handle, 63);
@@ -103,6 +105,26 @@ async function authorizedOrder(db, id, token) {
   return order;
 }
 
+function paymentClaimConflict(error) {
+  return /(?:unique|constraint).*payment_receipt_claims|payment_receipt_claims.*(?:unique|constraint)/i.test(String(error?.message || error));
+}
+
+async function claimPaymentReceipt(db, txHash, purposeType, purposeId, statements, conditionalClaim = null) {
+  const now = Date.now();
+  try {
+    const results = await db.batch([
+      conditionalClaim || db.prepare("INSERT INTO payment_receipt_claims(tx_hash,purpose_type,purpose_id,created_at) VALUES(?,?,?,?)").bind(txHash, purposeType, purposeId, now),
+      ...statements,
+    ]);
+    const claimChange = results?.[0]?.meta?.changes;
+    if (claimChange !== undefined && Number(claimChange) !== 1) throw new Error("payment receipt state changed before submission; reload and retry");
+    return results;
+  } catch (error) {
+    if (paymentClaimConflict(error)) throw new Error("transaction hash is already claimed for another payment purpose");
+    throw error;
+  }
+}
+
 async function submitPaymentReceipt(db, id, token, input) {
   const order = await authorizedOrder(db, id, token);
   if (!order) throw new Error("order not found or unauthorized");
@@ -110,8 +132,10 @@ async function submitPaymentReceipt(db, id, token, input) {
   if (!HEX_TX.test(txHash)) throw new Error("valid Base transaction hash required");
   if (order.payment_status !== "unsubmitted") throw new Error("payment receipt already submitted");
   const now = Date.now();
-  await db.prepare("UPDATE service_orders SET payment_tx_hash=?,payment_status='pending_verification',status='payment_review',updated_at=? WHERE id=?").bind(txHash, now, id).run();
-  await db.prepare("INSERT INTO order_events(order_id,kind,details,created_at) VALUES(?,'payment_receipt_submitted',?,?)").bind(id, JSON.stringify({ tx_hash: txHash }), now).run();
+  await claimPaymentReceipt(db, txHash, "service_order", id, [
+    db.prepare("UPDATE service_orders SET payment_tx_hash=?,payment_status='pending_verification',status='payment_review',updated_at=? WHERE id=? AND payment_status='unsubmitted'").bind(txHash, now, id),
+    db.prepare("INSERT INTO order_events(order_id,kind,details,created_at) SELECT ?,'payment_receipt_submitted',?,? WHERE EXISTS (SELECT 1 FROM service_orders WHERE id=? AND payment_tx_hash=? AND payment_status='pending_verification')").bind(id, JSON.stringify({ tx_hash: txHash }), now, id, txHash),
+  ], db.prepare("INSERT INTO payment_receipt_claims(tx_hash,purpose_type,purpose_id,created_at) SELECT ?,'service_order',?,? WHERE EXISTS (SELECT 1 FROM service_orders WHERE id=? AND payment_status='unsubmitted')").bind(txHash, id, now, id));
   return { id, status: "payment_review", payment_status: "pending_verification" };
 }
 
@@ -151,7 +175,9 @@ async function submitBountyPaymentReceipt(db, id, token, input) {
   const txHash = clean(input.tx_hash, 66).toLowerCase();
   if (!HEX_TX.test(txHash)) throw new Error("valid Base transaction hash required");
   if (bounty.payment_status !== "unsubmitted") throw new Error("payment receipt already submitted");
-  await db.prepare("UPDATE bounty_requests SET payment_tx_hash=?,payment_status='pending_verification',status='payment_review',updated_at=? WHERE id=?").bind(txHash, Date.now(), id).run();
+  await claimPaymentReceipt(db, txHash, "bounty", id, [
+    db.prepare("UPDATE bounty_requests SET payment_tx_hash=?,payment_status='pending_verification',status='payment_review',updated_at=? WHERE id=? AND payment_status='unsubmitted'").bind(txHash, Date.now(), id),
+  ], db.prepare("INSERT INTO payment_receipt_claims(tx_hash,purpose_type,purpose_id,created_at) SELECT ?,'bounty',?,? WHERE EXISTS (SELECT 1 FROM bounty_requests WHERE id=? AND payment_status='unsubmitted')").bind(txHash, id, Date.now(), id));
   return { id, status: "payment_review", payment_status: "pending_verification" };
 }
 
@@ -171,30 +197,49 @@ function paidExactly(receipt, treasury, atomic) {
     && BigInt(log.data || "0x0") === BigInt(atomic));
 }
 
+async function verifyBaseUsdcTransfer(txHash, treasury, atomic, fetcher = fetch, minimumConfirmations = 12n) {
+  if (!HEX_TX.test(String(txHash || "")) || !/^0x[a-fA-F0-9]{40}$/.test(String(treasury || "")) || !/^\d+$/.test(String(atomic || ""))) return { verified: false, reason: "invalid_payment_identity" };
+  const observations = await Promise.all(BASE_RPCS.map(async (url) => ({ receipt: await rpc(url, "eth_getTransactionReceipt", [txHash], fetcher), head: await rpc(url, "eth_blockNumber", [], fetcher) })));
+  if (observations.some(({ receipt }) => !receipt)) return { verified: false, reason: "receipt_not_found" };
+  const [first, second] = observations;
+  if (first.receipt.blockHash !== second.receipt.blockHash || observations.some(({ receipt }) => receipt.status !== "0x1")) return { verified: false, reason: "rpc_disagreement_or_failed_transaction" };
+  const block = BigInt(first.receipt.blockNumber);
+  const confirmations = observations.map(({ head }) => BigInt(head) - block);
+  if (confirmations.some((count) => count < minimumConfirmations)) return { verified: false, reason: "insufficient_confirmations", confirmations: confirmations.map(String) };
+  if (!observations.every(({ receipt }) => paidExactly(receipt, treasury, atomic))) return { verified: false, reason: "exact_transfer_not_found" };
+  return { verified: true, confirmations: confirmations.map(String), independent_rpc_observations: observations.length, block_number: block.toString() };
+}
+
 async function processPendingOrders(env, fetcher = fetch) {
   if (!env.DB || !/^0x[a-fA-F0-9]{40}$/.test(env.TREASURY_WALLET_ADDRESS || "")) return { configured: false, checked: 0, verified: 0 };
-  const pending = await env.DB.prepare("SELECT id,service_id,quoted_atomic,payment_tx_hash FROM service_orders WHERE payment_status='pending_verification' ORDER BY updated_at LIMIT 10").all();
+  const pending = await env.DB.prepare("SELECT service_orders.id,service_orders.service_id,service_orders.objective,service_orders.acceptance_criteria,service_orders.target_scope,service_orders.execution_mode,service_orders.quoted_atomic,service_orders.payment_tx_hash FROM service_orders JOIN payment_receipt_claims ON payment_receipt_claims.tx_hash=service_orders.payment_tx_hash AND payment_receipt_claims.purpose_type='service_order' AND payment_receipt_claims.purpose_id=service_orders.id WHERE service_orders.payment_status='pending_verification' AND service_orders.published_task_id IS NULL ORDER BY service_orders.updated_at LIMIT 10").all();
   let verified = 0;
   for (const order of pending.results || []) {
     try {
-      const observations = await Promise.all(BASE_RPCS.map(async (url) => ({
-        receipt: await rpc(url, "eth_getTransactionReceipt", [order.payment_tx_hash], fetcher),
-        head: await rpc(url, "eth_blockNumber", [], fetcher),
-      })));
-      if (observations.some(({ receipt }) => !receipt)) continue;
-      const [first, second] = observations;
-      if (first.receipt.blockHash !== second.receipt.blockHash || first.receipt.status !== "0x1" || second.receipt.status !== "0x1") continue;
-      const block = BigInt(first.receipt.blockNumber);
-      if (observations.some(({ head }) => BigInt(head) - block < 12n)) continue;
-      if (!observations.every(({ receipt }) => paidExactly(receipt, env.TREASURY_WALLET_ADDRESS, order.quoted_atomic))) continue;
-      const member = await env.DB.prepare("SELECT handle FROM guild_applications WHERE status='active' ORDER BY CASE WHEN handle='mavverick-scout' THEN 1 ELSE 0 END, updated_at LIMIT 1").first();
+      const payment = await verifyBaseUsdcTransfer(order.payment_tx_hash, env.TREASURY_WALLET_ADDRESS, order.quoted_atomic, fetcher);
+      if (!payment.verified) continue;
+      const service = serviceById(order.service_id);
+      if (!service) throw new Error("verified order references an unsupported service");
       const now = Date.now();
-      const status = member?.handle ? "queued" : "awaiting_assignment";
-      await env.DB.prepare("UPDATE service_orders SET payment_status='verified',status=?,assigned_agent=?,updated_at=? WHERE id=? AND payment_status='pending_verification'")
-        .bind(status, member?.handle || null, now, order.id).run();
-      await env.DB.prepare("INSERT INTO order_events(order_id,kind,details,created_at) VALUES(?,'payment_verified',?,?)")
-        .bind(order.id, JSON.stringify({ tx_hash: order.payment_tx_hash, confirmations: 12, independent_rpc_observations: 2, assigned_agent: member?.handle || null }), now).run();
-      verified += 1;
+      const expiresAt = Math.floor(now / 1000) + 30 * 24 * 60 * 60;
+      const description = `Objective:\n${order.objective}\n\nAuthorized target scope:\n${order.target_scope}\n\nExecution mode: ${order.execution_mode}`;
+      const gross = BigInt(order.quoted_atomic);
+      const platformFee = gross * 1500n / 10000n;
+      const economics = {
+        gross_atomic: gross.toString(),
+        platform_fee_atomic: platformFee.toString(),
+        worker_payout_atomic: (gross - platformFee).toString(),
+        platform_fee_bps: 1500,
+      };
+      const results = await env.DB.batch([
+        env.DB.prepare("INSERT INTO tasks(title,description,acceptance_criteria,category,reward_atomic,platform_fee_bps,status,fulfillment_mode,created_at,expires_at) SELECT ?,?,?,?,quoted_atomic,1500,'open','digital',?,? FROM service_orders WHERE id=? AND payment_status='pending_verification' AND published_task_id IS NULL")
+          .bind(service.name, description, order.acceptance_criteria, service.category, now, expiresAt, order.id),
+        env.DB.prepare("UPDATE service_orders SET payment_status='verified',status='open',assigned_agent=NULL,published_task_id=last_insert_rowid(),updated_at=? WHERE id=? AND payment_status='pending_verification' AND published_task_id IS NULL AND EXISTS (SELECT 1 FROM tasks WHERE id=last_insert_rowid() AND created_at=?)")
+          .bind(now, order.id, now),
+        env.DB.prepare("INSERT INTO order_events(order_id,kind,details,created_at) SELECT id,'payment_verified_and_task_published',?,? FROM service_orders WHERE id=? AND payment_status='verified' AND published_task_id=last_insert_rowid()")
+          .bind(JSON.stringify({ tx_hash: order.payment_tx_hash, ...payment, economics, payout_authority: "owner_signature_required" }), now, order.id),
+      ]);
+      if (Number(results?.[1]?.meta?.changes || 0) === 1) verified += 1;
     } catch (error) {
       console.warn(JSON.stringify({ event: "order_payment_verification_deferred", order_id: order.id, message: String(error.message || error) }));
     }
@@ -204,7 +249,7 @@ async function processPendingOrders(env, fetcher = fetch) {
 
 async function processPendingBounties(env, fetcher = fetch) {
   if (!env.DB || !/^0x[a-fA-F0-9]{40}$/.test(env.TREASURY_WALLET_ADDRESS || "")) return { configured: false, checked: 0, verified: 0 };
-  const pending = await env.DB.prepare("SELECT id,reward_atomic,payment_tx_hash FROM bounty_requests WHERE payment_status='pending_verification' ORDER BY updated_at LIMIT 10").all();
+  const pending = await env.DB.prepare("SELECT b.id,b.reward_atomic,b.payment_tx_hash FROM bounty_requests b JOIN payment_receipt_claims f ON f.tx_hash=b.payment_tx_hash AND f.purpose_type='bounty' AND f.purpose_id=b.id WHERE b.payment_status='pending_verification' ORDER BY b.updated_at LIMIT 10").all();
   let verified = 0;
   for (const bounty of pending.results || []) {
     try {
@@ -226,11 +271,14 @@ async function approveBounty(db, id, reviewNote = "") {
   const bounty = await db.prepare("SELECT * FROM bounty_requests WHERE id=?").bind(id).first();
   if (!bounty || bounty.status !== "ready_for_review" || bounty.payment_status !== "verified") throw new Error("verified bounty is not ready for review");
   const now = Date.now();
-  const task = await db.prepare("INSERT INTO tasks(title,description,acceptance_criteria,category,reward_atomic,platform_fee_bps,status,fulfillment_mode,created_at,expires_at) VALUES(?,?,?,?,?,1500,'open','digital',?,?) RETURNING id")
-    .bind(bounty.title, bounty.description, bounty.acceptance_criteria, bounty.category, bounty.reward_atomic, now, bounty.expires_at).first();
-  await db.prepare("UPDATE bounty_requests SET status='published',published_task_id=?,review_note=?,updated_at=? WHERE id=?").bind(task.id, clean(reviewNote, 1000), now, id).run();
-  await db.prepare("INSERT INTO audit_events(kind,actor,subject_type,subject_id,details,created_at) VALUES('custom_bounty_published','operator','task',?,?,?)").bind(String(task.id), JSON.stringify({ bounty_request_id: id, funding_verified: true }), now).run();
-  return { id, status: "published", task_id: task.id };
+  if (clean(reviewNote,1000).length < 20) throw new Error("a scope and acceptance review note is required");
+  const results = await db.batch([
+    db.prepare("INSERT INTO tasks(title,description,acceptance_criteria,category,reward_atomic,platform_fee_bps,status,fulfillment_mode,created_at,expires_at) SELECT title,description,acceptance_criteria,category,reward_atomic,1500,'open','digital',?,expires_at FROM bounty_requests b WHERE id=? AND status='ready_for_review' AND payment_status='verified' AND authorization_attested=1 AND published_task_id IS NULL AND expires_at>? AND EXISTS(SELECT 1 FROM payment_receipt_claims f WHERE f.tx_hash=b.payment_tx_hash AND f.purpose_type='bounty' AND f.purpose_id=b.id) RETURNING id").bind(now,id,Math.floor(now/1000)),
+    db.prepare("UPDATE bounty_requests SET status='published',published_task_id=last_insert_rowid(),review_note=?,updated_at=? WHERE id=? AND status='ready_for_review' AND published_task_id IS NULL AND changes()=1").bind(clean(reviewNote,1000),now,id),
+    db.prepare("INSERT INTO audit_events(kind,actor,subject_type,subject_id,details,created_at) SELECT CASE WHEN changes()=1 THEN 'custom_bounty_published' END,'operator','task',CAST(published_task_id AS TEXT),?,? FROM bounty_requests WHERE id=?").bind(JSON.stringify({bounty_request_id:id,funding_verified:true}),now,id),
+  ]);
+  if (Number(results[1]?.meta?.changes) !== 1) throw new Error("bounty state changed before publication");
+  return { id, status: "published", task_id: results[0]?.results?.[0]?.id };
 }
 
 async function reviewOperationsLoop(env) {
@@ -250,4 +298,4 @@ async function reviewOperationsLoop(env) {
   return { configured: true, signal_kind: signalKind, ...observation };
 }
 
-export { MARKET_BENCHMARKS, SERVICES, approveBounty, authorizedBounty, authorizedOrder, createBountyRequest, createOrder, processPendingBounties, processPendingOrders, reviewOperationsLoop, serviceById, submitBountyPaymentReceipt, submitPaymentReceipt };
+export { MARKET_BENCHMARKS, SERVICES, approveBounty, authorizedBounty, authorizedOrder, claimPaymentReceipt, createBountyRequest, createOrder, processPendingBounties, processPendingOrders, reviewOperationsLoop, serviceById, submitBountyPaymentReceipt, submitPaymentReceipt, verifyBaseUsdcTransfer };

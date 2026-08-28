@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { securityReviewManifest, tierById, validateSecurityReview } from "../src/security-services.js";
 
-const valid = { tier_id: "focused-code-review", organization: "Example LLC", contact_email: "security@example.com", repository_url: "https://github.com/example/project", commit_sha: "a".repeat(40), branch_context: "main", scope_paths: ["src/", "package-lock.json"], authorization_attested: true, repository_license_attested: true, safe_testing_consent: true };
+const valid = { tier_id: "focused-code-review", organization: "Example LLC", contact_email: "security@example.com", repository_url: "https://github.com/example/project", commit_sha: "a".repeat(40), branch_context: "main", scope_paths: ["src/", "package-lock.json"], declared_loc: 5000, declared_file_count: 80, authorization_attested: true, repository_license_attested: true, safe_testing_consent: true };
 
 test("security review catalog uses bounded fair-market entry prices", () => {
   assert.equal(tierById("static-scan-review").price_atomic, "49000000");
@@ -15,6 +15,9 @@ test("security review intake pins scope to an exact commit", () => {
   assert.deepEqual(review.scopePaths, ["src/", "package-lock.json"]);
   assert.throws(() => validateSecurityReview({ ...valid, commit_sha: "main" }), /exact/);
   assert.throws(() => validateSecurityReview({ ...valid, scope_paths: ["../secrets"] }), /scope path/);
+  for (const unsafe of ["..", "foo/..", "C:/Windows", "%2e%2e/secrets", "src\\secrets"]) assert.throws(() => validateSecurityReview({ ...valid, scope_paths: ["src/", unsafe] }), /scope path/);
+  assert.throws(() => validateSecurityReview({ ...valid, declared_loc: 10001 }), /cap/);
+  assert.throws(() => validateSecurityReview({ ...valid, repository_url: "https://127.0.0.1/example/project" }), /allowed public Git host/);
 });
 
 test("security review intake requires authorization and repository rights", () => {

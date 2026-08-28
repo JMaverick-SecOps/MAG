@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { LICENSE_BYTES, migrationCompatibility, migrationManifest, quoteLicenses } from "../src/migration-service.js";
+import { LICENSE_BYTES, isVaultReference, migrationCompatibility, migrationManifest, quoteLicenses } from "../src/migration-service.js";
 
 test("migration licenses cost 18 USDC and pool 500 GiB each",()=>{
   const quote=quoteLicenses((LICENSE_BYTES+1n).toString(),2);
@@ -25,4 +25,10 @@ test("public manifest distinguishes control plane from unconfigured data movers"
   assert.equal(manifest.license.price,"$18 USDC");
   assert.match(manifest.honesty,/control plane/i);
   assert.ok(manifest.safety.includes("no raw credentials accepted"));
+});
+
+test("connection identifiers must be explicit vault references, not token-shaped strings",()=>{
+  assert.equal(isVaultReference("vault:customer:source"),true);
+  assert.equal(isVaultReference("secret-store:google:tenant-1"),true);
+  assert.equal(isVaultReference("test-only-unprefixed-token-not-a-vault-reference"),false);
 });

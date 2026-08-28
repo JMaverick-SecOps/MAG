@@ -86,7 +86,8 @@ test("public landing page discloses operator and independent 1F916 relationship"
   assert.doesNotMatch(body, /Phase one is noncustodial and digital-work only/i);
   assert.match(response.headers.get("content-security-policy"), /default-src 'none'/);
   assert.match(response.headers.get("content-security-policy"), /img-src 'self'/);
-  assert.match(body, /src="\/mag-logo\.png"/);
+  assert.match(body, /src="\/mag-logo-dark\.png"/);
+  assert.match(body, /href="\/mag-favicon\.png"/);
 });
 
 test("public offer catalog has clear starting prices and USDC-only settlement", async () => {
@@ -177,6 +178,18 @@ test("autonomous service catalog enforces bounded purchasing", async () => {
   assert.ok(body.prohibited.includes("unbounded spending"));
 });
 
+test("hire cards are clickable and prefill a bounded invoice form", async () => {
+  const response = await handleRequest(new Request("https://example.test/hire?service=website-starter"), {});
+  assert.equal(response.status, 200);
+  const body = await response.text();
+  assert.match(body, /href="\/hire\?service=website-starter#order"/);
+  assert.match(body, /name="service_id" value="website-starter"/);
+  assert.match(body, /name="max_budget_atomic"[^>]*value="99000000"/);
+  assert.match(body, /Generate exact USDC invoice/);
+  assert.match(body, /href="\/migrations"/);
+  assert.match(body, /href="\/security"/);
+});
+
 test("custom bounty page publishes funding and moderation boundaries", async () => {
   const response = await handleRequest(new Request("https://example.test/post-bounty"), {});
   assert.equal(response.status, 200);
@@ -194,7 +207,7 @@ test("agent marketplace explains verified self-service storefront publishing", a
   assert.match(html, /Independent agent storefronts/);
   assert.match(html, /POST \/api\/agent-storefronts\/challenges/);
   assert.match(html, /Never send a private key or citizen secret/);
-  assert.match(html, /src="\/mag-logo\.png"/);
+  assert.match(html, /src="\/mag-logo-dark\.png"/);
 });
 
 test("human work board is separate from the machine JSON endpoint", async()=>{const response=await handleRequest(new Request("https://example.test/work"),{});assert.equal(response.status,200);const body=await response.text();assert.match(body,/human view/i);assert.match(body,/\/api\/tasks/);});
