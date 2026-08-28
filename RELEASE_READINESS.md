@@ -30,6 +30,8 @@ The service desk and evidence plane work locally. Native endpoint installers, re
 
 The signed-in merchant Developers page was inspected: checkout snippets are present, but the public key is empty. The Developers, Integrations and Settings pages expose no webhook registration control. Provider support is needed for provisioning and authoritative documentation.
 
+After explicit owner approval, a Technical Issue was submitted through the merchant Support page requesting public-key provisioning, webhook registration/signing/event-schema documentation, settlement evidence and non-monetary signed test delivery. The page confirmed **Report received**; no ticket identifier was displayed. The request included only the planned MAG callback URL and technical requirements, instructed support not to route production events yet, and requested no payment-setting changes or fund transfers. No webhook is registered or enabled on the strength of this support receipt; provider follow-up is still required.
+
 Required evidence before enablement:
 
 1. Exact signature/header/timestamp format and sample raw signed deliveries from SaturnShift.
