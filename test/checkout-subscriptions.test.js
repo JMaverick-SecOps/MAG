@@ -20,7 +20,7 @@ function rpcFixture(intent,hash=TX,change={}) {
 test("every catalog service opens a preselected checkout; product prices are not editable",()=>{
   const catalog=catalogPage("",true);
   for(const service of SERVICES)assert.ok(catalog.includes('href="/hire?service='+service.id+'#checkout"'),service.id);
-  for(const service of SERVICES.filter(s=>!["migration-fabric","managed-ops-psa","static-scan-review","focused-code-review","application-review"].includes(s.id))) {
+  for(const service of SERVICES.filter(s=>!["migration-fabric","managed-ops-psa","static-scan-review","focused-code-review","application-review","architecture-threat-model"].includes(s.id))) {
     const page=catalogPage(service.id,true),defaults=catalogDefaults(service);
     assert.ok(defaults.objective.length>=30);assert.ok(defaults.acceptance_criteria.length>=30);
     assert.ok(page.includes('type="hidden" name="max_budget_atomic"'));

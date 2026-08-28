@@ -1,4 +1,5 @@
 import { authorizedOrder, serviceById } from "./commerce.js";
+import { hasDeliverySecret, verifySaturnShiftDelivery, SaturnShiftDeliveryError } from "./saturnshift-delivery.js";
 
 const SATURNSHIFT_SCRIPT_URL = "https://api.saturnshift.io/checkout.js";
 const SATURNSHIFT_PROVIDER = "saturnshift";
@@ -156,6 +157,7 @@ function paymentProviderOptions(env) {
       checkout_configured: Boolean(validPublicKey(env)),
       configured: Boolean(validPublicKey(env)) && webhook.ready,
       signed_webhook_configured: webhook.ready,
+      delivery_test: { supported: true, secret_configured: hasDeliverySecret(env?.SATURNSHIFT_WEBHOOK_SECRET), payment_activation: false },
       methods: ["card", "bank", "crypto"],
       settlement_proof: "verified_signed_webhook_plus_exact_settlement_fields",
       fiat_policy: "paid_fiat_pending_usdc_reserve; no task publication until reserve coverage is independently gated",
@@ -442,9 +444,18 @@ async function applyVerifiedPayment(db, event, verification, env) {
 
 async function handleSaturnShiftWebhook(request, env) {
   if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405, { allow: "POST" });
-  if (!env?.DB) return json({ error: "marketplace_database_not_configured" }, 503);
   if (!(request.headers.get("content-type") || "").toLowerCase().includes("application/json")) return json({ error: "application_json_required" }, 415);
   try {
+    if (request.headers.has("SaturnShift-Signature")) {
+      const delivery = await verifySaturnShiftDelivery(request, env?.SATURNSHIFT_WEBHOOK_SECRET);
+      if (delivery.type === "webhook.test") {
+        return json({ received: true, signature_verified: true, test_event: true, applied: false, payment_intake_enabled: false });
+      }
+      // A valid delivery signature alone does not establish settlement, exact
+      // order correlation, fees, refunds or ACH finality. Leave real events retryable.
+      return json({ error: "saturnshift_payment_contract_not_confirmed", signature_verified: true, applied: false }, 503, { "retry-after": "300" });
+    }
+    if (!env?.DB) return json({ error: "marketplace_database_not_configured" }, 503);
     const verification = await verifyWebhook(request, env);
     let payload;
     try {
@@ -464,6 +475,7 @@ async function handleSaturnShiftWebhook(request, env) {
       reserve_required: result.reserve_required,
     }, 200);
   } catch (error) {
+    if (error instanceof SaturnShiftDeliveryError) return json({ error: error.code }, error.status);
     if (error instanceof SaturnShiftError) {
       if (error.status === 202) return json({ received: true, signature_verified: true, applied: false, reason: error.code }, 202);
       return json({ error: error.code }, error.status);

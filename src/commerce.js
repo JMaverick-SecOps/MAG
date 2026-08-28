@@ -57,6 +57,7 @@ const SERVICES = Object.freeze([
   { id: "static-scan-review", name: "Static Security Scan Review", from_atomic: "49000000", category: "security", risk: "medium", modes: ["audit_only"], benchmark_id: "fiverr-code-review", summary: "Pinned-commit static scan, human-grade finding triage, false-positive notes, and a machine-readable report for up to 2,000 lines." },
   { id: "focused-code-review", name: "Focused Secure Code Review", from_atomic: "149000000", category: "security", risk: "medium", modes: ["audit_only"], benchmark_id: "upwork-security", summary: "Static analysis plus focused manual review, CWE-mapped evidence, remediation guidance, and a reproducible verification checklist for up to 10,000 lines." },
   { id: "application-review", name: "Application Security Review", from_atomic: "499000000", category: "security", risk: "high", modes: ["audit_only", "preapproved_safe_tests"], benchmark_id: "upwork-security", summary: "Threat model, dependency and secret review, authentication and authorization analysis, prioritized evidence, and one remediation retest for a bounded application." },
+  { id: "architecture-threat-model", name: "Architecture Threat Model", from_atomic: "750000000", category: "security", risk: "medium", modes: ["audit_only"], summary: "One bounded system: data flows, trust boundaries, abuse cases and a mitigation plan; up to 25,000 lines and 500 files of supporting material. Review capacity is confirmed before payment." },
   { id: "creative-production", name: "Creative Production", from_atomic: "49000000", category: "creative", risk: "low", modes: ["artifact_delivery"], summary: "Original music concepts, visual assets, copy, research briefs, presentations, and other rights-cleared digital work." },
   { id: "custom-autonomous", name: "Custom Autonomous Task", from_atomic: "99000000", category: "custom", risk: "review", modes: ["proposal_first"], summary: "Any lawful, remote, objectively verifiable task that community agents can complete without hidden human labor." },
 ]);
@@ -75,7 +76,7 @@ function serviceById(id) { return SERVICES.find((service) => service.id === id);
 async function createOrder(db, input) {
   const service = serviceById(clean(input.service_id, 80));
   if (!service) throw new Error("unsupported service");
-  const intake = { "migration-fabric": "/migrations", "managed-ops-psa": "/ops", "static-scan-review": "/security", "focused-code-review": "/security", "application-review": "/security" }[service.id];
+  const intake = { "migration-fabric": "/migrations", "managed-ops-psa": "/ops", "static-scan-review": "/security", "focused-code-review": "/security", "application-review": "/security", "architecture-threat-model": "/security" }[service.id];
   if (intake) throw new Error(`This service requires capacity and connector preflight at ${intake}; a generic order cannot bypass that gate.`);
   const buyerName = clean(input.buyer_name, 100);
   const buyerEmail = clean(input.buyer_email, 254).toLowerCase();

@@ -1,3 +1,4 @@
+import { managedProductIntro } from "./managed-product.js";
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PLANS = Object.freeze([
   { id: "psa-workspace", name: "PSA Workspace", monthly_min_atomic: "79000000", endpoint_monthly_atomic: "0", includes: ["service requests", "ticket workflow", "SLA evidence", "asset links", "monthly metrics"] },
@@ -379,11 +380,13 @@ function managedOpsPage() {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Northstar IT Operations · Powered by MAG</title>
+<title>MAG Managed Operations · RMM &amp; PSA tenant workspace</title>
+<link rel="icon" href="/mag-favicon.png">
 <style>:root{--navy:#061a33;--deep:#041326;--panel:#0a2744;--panel2:#0c304f;--line:#1e5774;--cyan:#11d8ed;--gold:#f6c653;--green:#7ce9ba;--red:#ff8d91;--ink:#eaf7ff;--muted:#9eb6c9}*{box-sizing:border-box}body{margin:0;background:var(--navy);color:var(--ink);font:15px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}.shell{display:grid;grid-template-columns:246px minmax(0,1fr);min-height:100vh}.side{display:flex;flex-direction:column;padding:24px 18px;background:var(--deep);border-right:1px solid var(--line)}.tenant-brand{display:flex;align-items:center;gap:12px;font-weight:900;font-size:1.05rem}.tenant-mark{display:grid;place-items:center;width:44px;height:44px;border-radius:13px;background:linear-gradient(145deg,var(--cyan),#0875ba);color:#031528;font-size:1.35rem;box-shadow:0 0 0 3px #0b3453}.tenant-sub{color:var(--muted);font-size:.8rem;margin:8px 0 26px 56px}.nav{display:grid;gap:5px}.nav a{padding:10px 12px;border-radius:9px;color:var(--muted);text-decoration:none}.nav a.active,.nav a:hover{background:#0c3454;color:var(--ink)}.powered{display:flex;gap:9px;align-items:center;margin-top:auto;padding-top:26px;color:#789bb1;font-size:.78rem}.powered img{width:30px;height:30px;object-fit:contain}main{padding:28px;min-width:0}.top{display:flex;justify-content:space-between;gap:20px;align-items:flex-start}.eyebrow{margin:0;color:var(--cyan);font-size:.76rem;font-weight:800;letter-spacing:.11em}.top h1{margin:.3rem 0;font-size:clamp(1.65rem,3vw,2.35rem)}.top-note{margin:0;color:var(--muted)}.badges{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}.badge{border:1px solid #31715f;color:var(--green);border-radius:999px;padding:6px 10px;white-space:nowrap}.badge.readonly{border-color:#866d2d;color:var(--gold)}.boundary{margin:18px 0 0;padding:12px 15px;border:1px solid #7f672b;border-left:4px solid var(--gold);border-radius:10px;background:#2a281c;color:#f7e9bc}.cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin:18px 0}.card,.panel{background:var(--panel);border:1px solid var(--line);border-radius:15px;padding:18px}.card span,.label{color:var(--muted)}.metric{margin:.2rem 0;font-size:2rem;font-weight:900}.good{color:var(--green)}.warn{color:var(--gold)}.bad{color:var(--red)}.layout{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(290px,.75fr);gap:14px;margin-top:14px}.stack{display:grid;gap:14px}.panel h2{margin:.1rem 0 14px;font-size:1.05rem}.panel-head{display:flex;justify-content:space-between;gap:12px;align-items:center}.minor{font-size:.78rem;color:var(--muted)}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:10px 8px;border-bottom:1px solid #19405d;vertical-align:top}th{color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.06em}tbody tr:last-child td{border-bottom:0}.state{display:inline-block;padding:3px 8px;border-radius:999px;background:#103b48;font-size:.76rem}.state.attn{background:#4a3b1d;color:#ffe39b}.state.risk{background:#4b2631;color:#ffc5c8}.posture-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.posture{padding:14px;border:1px solid #1a4e6a;border-radius:12px;background:var(--panel2)}.posture b{font-size:1.35rem}.bar{height:7px;margin:9px 0;border-radius:99px;background:#163a53;overflow:hidden}.fill{display:block;height:100%;background:linear-gradient(90deg,var(--cyan),var(--green))}.fill.patch{width:94%}.fill.backup{width:98%}.approval{padding:12px 0;border-bottom:1px solid #19405d}.approval:last-of-type{border-bottom:0}.approval p{margin:4px 0}.finding-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px}.finding-summary div{padding:10px;border-radius:10px;background:var(--panel2);text-align:center}.finding-summary b{display:block;font-size:1.25rem}.disclaimer{margin:12px 0 0;color:var(--muted);font-size:.8rem}.footer-note{margin:18px 0 0;color:#789bb1;font-size:.78rem}@media(max-width:1050px){.cards{grid-template-columns:repeat(2,1fr)}.layout{grid-template-columns:1fr}}@media(max-width:760px){.shell{grid-template-columns:1fr}.side{display:none}main{padding:20px}.top{display:block}.badges{justify-content:flex-start;margin-top:12px}.posture-grid{grid-template-columns:1fr}}@media(max-width:520px){.cards{grid-template-columns:1fr}.finding-summary{grid-template-columns:repeat(2,1fr)}table{display:block;overflow-x:auto}}</style>
 </head>
 <body>
-<div class="shell">
+${managedProductIntro(PLANS)}
+<div class="shell" id="demo">
 <aside class="side">
 <div class="tenant-brand">
 <span class="tenant-mark" aria-hidden="true">N</span>
@@ -412,8 +415,8 @@ function managedOpsPage() {
 <p class="top-note">Fleet health, service delivery, and security evidence in one tenant-scoped view.</p>
 </div>
 <div class="badges">
-<span class="badge">● Intake healthy</span>
-<span class="badge readonly">Phase zero · read-only</span>
+<span class="badge">Sample dashboard · fictional data</span>
+<span class="badge readonly">Demo · read-only</span>
 </div>
 </header>
 <div class="boundary">

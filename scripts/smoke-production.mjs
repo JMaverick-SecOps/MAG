@@ -39,6 +39,24 @@ for (const path of ["/api/tasks", "/api/services", "/api/migrations", "/api/mana
 
 const providers = await (await check("/api/payment-providers")).json();
 assert.equal(typeof providers.paid_intake_ready, "boolean");
+assert.equal(providers.saturnshift.delivery_test.supported, true);
+assert.equal(providers.saturnshift.delivery_test.payment_activation, false);
+const securityPage = await (await check("/security")).text();
+for (const id of ["static-scan-review", "focused-code-review", "application-review", "architecture-threat-model"]) {
+  assert.ok(securityPage.includes('href="/hire?service='+id+'#checkout"'), id);
+  const form = await (await check("/hire?service="+id)).text();
+  assert.ok(form.includes('name="tier_id" value="'+id+'"'));
+  assert.ok(form.includes('action="/intake/security-reviews"'));
+  assert.ok(!form.includes('action="/orders"'));
+}
+const operationsPage = await (await check("/ops")).text();
+assert.ok(operationsPage.includes('href="#demo"'));
+assert.ok(operationsPage.includes('href="/hire?service=managed-ops-psa#checkout"'));
+assert.ok(operationsPage.includes("Planned · not available for activation"));
+for (const plan of ["psa-workspace", "managed-visibility"]) {
+  const form = await (await check("/hire?service=managed-ops-psa&plan="+plan)).text();
+  assert.ok(form.includes('<option value="'+plan+'" selected>'));
+}
 const invalidJson = { method: "POST", headers: { "content-type": "application/json" }, body: "{}" };
 if (!providers.paid_intake_ready) {
   assert.match(selected, /Paid intake is temporarily unavailable/);
