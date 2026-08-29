@@ -1,8 +1,9 @@
 import { validateTenant, planById, authorizedTenant } from "./managed-ops.js";
 import { createPaymentIntent, verifyPaymentIntent } from "./payment-intents.js";
 import { claimPaymentReceipt } from "./commerce.js";
-const TERMS = "mag-prepaid-monthly-v1";
+const TERMS = "mag-30-day-trial-prepaid-monthly-v2";
 const DAY = 86400000;
+const TRIAL_DAYS = 30;
 async function sha(text) {return [...new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(text)))].map(b=>b.toString(16).padStart(2,"0")).join("");}
 function monthlyQuote(planId,devices) {
   const plan=planById(planId), n=Number(devices);
@@ -20,17 +21,22 @@ async function createSubscription(env,input,now=Date.now()) {
   const tenant=validateTenant(input), amount=monthlyQuote(tenant.plan.id,tenant.maxAssets);
   if (input.terms_accepted!==true || !/^[0-9a-f-]{36}$/i.test(input.request_key || "")) throw new Error("billing terms and unique request_key are required");
   if (await env.DB.prepare("SELECT id FROM managed_subscriptions WHERE request_key=?").bind(input.request_key).first()) throw new Error("request already created; reopen the original workspace rather than purchasing twice");
+  const domainPlaceholders=tenant.domains.map(()=>"?").join(",");
+  const priorTrial=await env.DB.prepare(`SELECT t.id FROM managed_tenants t JOIN managed_subscriptions s ON s.tenant_id=t.id WHERE t.contact_email=? OR EXISTS(SELECT 1 FROM json_each(t.authorized_domains_json) domain WHERE domain.value IN (${domainPlaceholders})) LIMIT 1`).bind(tenant.contactEmail,...tenant.domains).first();
+  if (priorTrial) throw new Error("a workspace trial already exists for this email or organization domain; reopen that workspace to subscribe");
   const tenantId=crypto.randomUUID(), id=crypto.randomUUID(), invoiceId=crypto.randomUUID(), token=crypto.randomUUID()+crypto.randomUUID();
+  const trialEndsAt=now+TRIAL_DAYS*DAY;
   // Validate the configured recipient before creating any customer records.
   const {transferRequest}=await import("./payment-intents.js");
   await transferRequest("subscription_invoice",invoiceId,env.TREASURY_WALLET_ADDRESS,amount);
   await env.DB.batch([
-    env.DB.prepare("INSERT INTO managed_tenants(id,name,contact_email,plan_id,max_assets,authorized_domains_json,authorization_attested,data_processing_consent,access_token_hash,status,created_at,updated_at) VALUES(?,?,?,?,?,?,1,1,?,'pending_review',?,?)").bind(tenantId,tenant.name,tenant.contactEmail,tenant.plan.id,tenant.maxAssets,JSON.stringify(tenant.domains),await sha(token),now,now),
-    env.DB.prepare("INSERT INTO managed_subscriptions(id,tenant_id,plan_id,endpoint_limit,monthly_atomic,terms_version,request_key,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)").bind(id,tenantId,tenant.plan.id,tenant.maxAssets,amount,TERMS,input.request_key,now,now),
-    env.DB.prepare("INSERT INTO subscription_invoices(id,subscription_id,period_number,amount_atomic,created_at) VALUES(?,?,1,?,?)").bind(invoiceId,id,amount,now),
-    env.DB.prepare("INSERT INTO subscription_events(subscription_id,event_key,kind,details,created_at) VALUES(?,?,'subscription_created',?,?)").bind(id,id+":created",JSON.stringify({terms_version:TERMS,billing_method:"prepaid_base_usdc",automatic_debit:false,monthly_atomic:amount,endpoint_limit:tenant.maxAssets}),now),
+    env.DB.prepare("INSERT INTO managed_tenants(id,name,contact_email,plan_id,max_assets,authorized_domains_json,authorization_attested,data_processing_consent,access_token_hash,status,created_at,updated_at) VALUES(?,?,?,?,?,?,1,1,?,'active',?,?)").bind(tenantId,tenant.name,tenant.contactEmail,tenant.plan.id,tenant.maxAssets,JSON.stringify(tenant.domains),await sha(token),now,now),
+    env.DB.prepare("INSERT INTO managed_subscriptions(id,tenant_id,plan_id,endpoint_limit,monthly_atomic,status,paid_through,terms_version,request_key,created_at,updated_at) VALUES(?,?,?,?,?,'active',?,?,?,?,?)").bind(id,tenantId,tenant.plan.id,tenant.maxAssets,amount,trialEndsAt,TERMS,input.request_key,now,now),
+    env.DB.prepare("INSERT INTO subscription_invoices(id,subscription_id,period_number,amount_atomic,period_start,created_at) VALUES(?,?,1,?,?,?)").bind(invoiceId,id,amount,trialEndsAt,now),
+    env.DB.prepare("INSERT INTO subscription_events(subscription_id,event_key,kind,details,created_at) VALUES(?,?,'subscription_created',?,?)").bind(id,id+":created",JSON.stringify({terms_version:TERMS,billing_method:"mag_merchant_checkout",automatic_debit:false,monthly_atomic:amount,endpoint_limit:tenant.maxAssets}),now),
+    env.DB.prepare("INSERT INTO subscription_events(subscription_id,event_key,kind,details,created_at) VALUES(?,?,'trial_started',?,?)").bind(id,id+":trial",JSON.stringify({trial_days:TRIAL_DAYS,trial_started_at:now,trial_ends_at:trialEndsAt,automatic_charge:false,invoice_due_at:trialEndsAt}),now),
   ]);
-  return {id,tenant_id:tenantId,access_token:token,invoice_id:invoiceId,amount_atomic:amount,status:"pending_payment",terms_version:TERMS,automatic_debit:false};
+  return {id,tenant_id:tenantId,access_token:token,invoice_id:invoiceId,amount_atomic:amount,status:"active",billing_state:"trialing",trial_days:TRIAL_DAYS,trial_started_at:now,trial_ends_at:trialEndsAt,terms_version:TERMS,automatic_debit:false};
 }
 async function authorizedSubscription(db,id,token) {
   const subscription=await db.prepare("SELECT * FROM managed_subscriptions WHERE id=? OR tenant_id=?").bind(id,id).first();
@@ -40,7 +46,12 @@ async function authorizedSubscription(db,id,token) {
 async function subscriptionState(db,id,token,now=Date.now()) {
   const s=await authorizedSubscription(db,id,token);
   const invoices=await db.prepare("SELECT * FROM subscription_invoices WHERE subscription_id=? ORDER BY period_number DESC LIMIT 24").bind(s.id).all();
-  return {subscription:s,invoices:invoices.results,entitled:s.status==="active"&&Number(s.paid_through)>now,automatic_debit:false,terms_version:TERMS};
+  const trialEvent=await db.prepare("SELECT details FROM subscription_events WHERE subscription_id=? AND kind='trial_started' LIMIT 1").bind(s.id).first();
+  let trial=null;
+  if(trialEvent)try{const details=JSON.parse(trialEvent.details);trial={days:Number(details.trial_days)||TRIAL_DAYS,started_at:Number(details.trial_started_at)||null,ends_at:Number(details.trial_ends_at)||null,active:s.status==="active"&&Number(details.trial_ends_at)>now};}catch{}
+  const entitled=s.status==="active"&&Number(s.paid_through)>now;
+  const billingState=trial?.active?"trialing":s.status;
+  return {subscription:s,invoices:invoices.results,entitled,billing_state:billingState,trial,automatic_debit:false,terms_version:TERMS};
 }
 async function subscriptionIntent(env,id,invoiceId,token) {
   const s=await authorizedSubscription(env.DB,id,token);
@@ -106,4 +117,4 @@ async function tenantEntitled(db,tenantId,now=Date.now()) {
   // Previously operator-approved tenants retain their existing non-subscription status.
   return !s || s.status==="active"&&Number(s.paid_through)>now;
 }
-export { TERMS, monthlyQuote, nextCalendarMonth, enabledPlans, createSubscription, authorizedSubscription, subscriptionState, subscriptionIntent, submitSubscriptionReceipt, cancelSubscription, processSubscriptions, tenantEntitled };
+export { DAY, TERMS, TRIAL_DAYS, monthlyQuote, nextCalendarMonth, enabledPlans, createSubscription, authorizedSubscription, subscriptionState, subscriptionIntent, submitSubscriptionReceipt, cancelSubscription, processSubscriptions, tenantEntitled };

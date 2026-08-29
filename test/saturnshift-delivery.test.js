@@ -51,11 +51,10 @@ test("oversized, malformed and structurally invalid signed bodies are rejected",
     assert.equal((await handleSaturnShiftWebhook(delivery(body),{SATURNSHIFT_WEBHOOK_SECRET:SECRET,DB:noWrites})).status,status);
   }
 });
-test("real payment, settlement and refund deliveries remain retryable and cannot write",async()=>{
+test("structurally incomplete payment, settlement and refund deliveries are rejected without writes",async()=>{
   for(const type of ["payment.succeeded","payment.paid","payment.refunded","payment.expired","payment.pending"]){
     const response=await handleSaturnShiftWebhook(delivery(JSON.stringify({type,data:{external_reference:crypto.randomUUID()}})),{SATURNSHIFT_WEBHOOK_SECRET:SECRET,DB:noWrites});
-    assert.equal(response.status,503);
-    assert.equal(response.headers.get("retry-after"),"300");
-    assert.equal((await response.json()).applied,false);
+    assert.equal(response.status,422);
+    assert.match((await response.json()).error,/invalid_saturnshift_payload_contract/);
   }
 });

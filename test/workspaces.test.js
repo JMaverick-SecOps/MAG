@@ -4,7 +4,7 @@ import { TestD1 } from "./helpers/d1.js";
 import worker from "../src/index.js";
 import { createManagedTenant } from "../src/managed-ops.js";
 import { createTicket, listTickets, updateTicket } from "../src/service-desk.js";
-import { managedConsoleResponse } from "../src/managed-console.js";
+import { managedConsoleResponse, renderConsole } from "../src/managed-console.js";
 import { createOrder } from "../src/commerce.js";
 import { orderStatusResponse } from "../src/order-views.js";
 
@@ -14,6 +14,13 @@ async function tenant(db,name="Example IT"){
  return created;
 }
 const request={title:"Review backup evidence",description:"The approved backup status report needs review.",severity:"high",request_key:"test_request_000001"};
+const metricCards=body=>Object.fromEntries([...body.matchAll(new RegExp('<div class="card">([^<]+)<b>([^<]*)</b></div>',"g"))].map(match=>[match[1],match[2]]));
+const dashboardFixture=coverage=>({
+ tenant:{id:"test-only-tenant",name:"Example IT"},branding:{},
+ assets:{total:0,reporting:0,stale:0},tickets:{open:0,pending_approvals:0},
+ patch:{coverage_percent:coverage},backup:{coverage_percent:coverage},
+ security:{recent_findings_30d:0},generated_at:0
+});
 test("service desk creates one ticket, enforces tenant scope and preserves immutable history",async t=>{
  const db=new TestD1();t.after(()=>db.close());const owner=await tenant(db),other=await tenant(db,"Other IT");
  const ticket=await createTicket(db,owner.id,owner.access_token,request);
@@ -32,8 +39,31 @@ test("live white-label console renders scoped database metrics and working ticke
  const response=await managedConsoleResponse({DB:db},{tenant_id:owner.id,access_token:owner.access_token});
  assert.equal(response.status,200);const body=await response.text();
  assert.match(body,/Example IT/);assert.match(body,/No service requests/);assert.match(body,/action="\/ops\/console"/);
- assert.doesNotMatch(body,/148|NS-DEN-LT/);
+ assert.equal(metricCards(body).Assets,"0");
+ assert.equal(metricCards(body)["Open tickets"],"0");
+ assert.doesNotMatch(body,/NS-DEN-LT/);
  assert.equal(response.headers.get("referrer-policy"),"no-referrer");
+});
+test("console metric assertions ignore numeric fragments in opaque test credentials",async()=>{
+ const d=dashboardFixture(0);
+ const body=await renderConsole(d,[],"test-only-opaque-148-token").text();
+ assert.equal(metricCards(body).Assets,"0");
+ const actualCount=await renderConsole({...d,assets:{...d.assets,total:148}},[],"test-only-token").text();
+ assert.equal(metricCards(actualCount).Assets,"148");
+});
+test("console renders missing and invalid coverage as Unknown",async()=>{
+ for(const value of [null,undefined,NaN,Infinity,-1,101,"0"]){
+  const cards=metricCards(await renderConsole(dashboardFixture(value),[],"test-only-token").text());
+  assert.equal(cards["Patch evidence"],"Unknown");
+  assert.equal(cards["Backup evidence"],"Unknown");
+ }
+});
+test("console preserves measured coverage including zero",async()=>{
+ for(const value of [0,25.5,100]){
+  const cards=metricCards(await renderConsole(dashboardFixture(value),[],"test-only-token").text());
+  assert.equal(cards["Patch evidence"],String(value)+"%");
+  assert.equal(cards["Backup evidence"],String(value)+"%");
+ }
 });
 test("customer invoice is clickable and private status never accepts an invalid token",async t=>{
  const db=new TestD1();t.after(()=>db.close());

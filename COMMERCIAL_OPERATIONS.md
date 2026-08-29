@@ -2,13 +2,13 @@
 
 ## Release boundary
 
-This release implements checkout and a prepaid subscription service. It does **not** certify every advertised digital service as staffed or every connector as production-ready.
+This release implements checkout plus a 30-day trial followed by prepaid subscription billing. It does **not** certify every advertised digital service as staffed or every connector as production-ready.
 
 - Every /hire service is clickable; service, price, mode and acceptance defaults are server-controlled. Only customer identity, scope and authorization remain to enter.
 - Ordinary invoices open a self-hosted Base-USDC wallet flow. The buyer must approve the exact transaction. MAG receives no wallet key or allowance. A unique invoice reference is bound to the ERC-20 transfer calldata, and two independent RPCs must observe the exact finalized transaction.
 - Confirmed orders become funded community tasks. A worker must still claim and perform the job; acceptance requires reproducible evidence. Publishing is not a guarantee of staffing or completion.
 - PSA Workspace: 79 USDC/calendar month. Managed Visibility: 49 USDC/calendar month plus 15 USDC per enrolled-device capacity. Prices come from the existing catalog. The managed-security plan remains disabled.
-- Subscription billing is **prepaid, not automatic debit**. The first verified invoice activates the tenant. A renewal invoice is generated seven days before expiry. Cancellation stops future invoices and preserves paid access until expiry. Unpaid subscriptions lose entitlement.
+- New PSA Workspace and Managed Visibility tenants receive one 30-day trial per contact or authorized organization domain. No payment method is required and the first post-trial invoice is created server-side. Payment during the trial prepays the calendar month after the trial; cancellation voids the unpaid invoice. No card, bank account or wallet is charged automatically. Unpaid subscriptions lose entitlement when trial or paid access expires.
 - Subscriptions include white-label display/colour/logo settings, tenant-scoped tickets/SLA targets, customer agreements, reviewed time entries and draft customer invoices. Draft invoices do not charge the customer's client. Endpoint enrollment, telemetry and runbooks require Managed Visibility; the flat-rate PSA plan cannot bypass per-device monitoring charges. Previously operator-approved non-subscription tenants retain their explicit legacy access.
 - The visible endpoint runner supports signed, opt-in inventory/heartbeat/memory telemetry and bounded diagnostics. It has no arbitrary remote shell, stealth installation, screen capture or auto-start. Restart-service code remains disabled by the production flag and additionally requires exact-target approval and local consent.
 - ScreenConnect inventory integration requires the customer's licensed instance, operator-pinned origin/filter and securely provisioned authentication. Live remote sessions, patch installation, unattended remediation and installer distribution are not certified.
@@ -50,9 +50,9 @@ No endpoint was enrolled on the owner's machine during release tests. No service
 
 ## SaturnShift and owner administration
 
-The merchant now has a public checkout key. That public identifier is in Wrangler configuration; it is not a secret. Card/ACH checkout stays disabled because the authoritative webhook signature/event/registration contract is still missing. The provisional fixture must not be enabled as if provider-certified.
+The merchant has a public checkout key. That public identifier is in Wrangler configuration; it is not a secret. SaturnShift's published [webhook contract](https://docs.saturnshift.io/webhooks) now defines the `SaturnShift-Signature: t=...,v1=...` raw-body HMAC, transaction envelope, deduplicated event ID and final `payment.paid` state. MAG verifies those exact bytes and accepts only an exact USD amount whose documented crypto settlement is USDC on Base. The hosted checkout still fails closed until the merchant signing secret is stored and the MAG endpoint is registered.
 
-Card/ACH settlement is fiat; crypto settlement can be Base USDC. This release does not convert, reserve or spend treasury money to bridge fiat. SaturnShift card-only subscriptions must not be described as Base-USDC automatic debits.
+Card/ACH settlement is fiat; crypto settlement can be Base USDC. The public merchant checkout advertises card and ACH, but their authoritative financial event fields have not been confirmed for MAG, so those buttons remain disabled by `SATURNSHIFT_FIAT_WEBHOOK_STATUS` unless the provider confirms the contract. This release does not convert, reserve or spend treasury money to bridge fiat. A customer's PSA/RMM tenant does not need SaturnShift: SaturnShift is MAG's merchant rail only. QuickBooks, Xero and NetSuite are separate tenant accounting connectors and are not yet represented as active.
 
 [Owner provisioning](scripts/provision-owner-admin.ps1) creates a random owner token, sends it over Wrangler stdin, and keeps only a Windows-user DPAPI-encrypted recovery file under the local MAG owner-admin directory, outside Git. It refuses to overwrite an existing unknown token. [Admin status](scripts/admin-status.ps1) checks authenticated access without printing the token. This credential gates review endpoints, not Safe signing; the Worker cannot sign treasury transactions.
 

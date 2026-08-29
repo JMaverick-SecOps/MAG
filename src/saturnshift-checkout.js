@@ -1,17 +1,17 @@
 import { authorizedOrder, serviceById } from "./commerce.js";
 import { hasDeliverySecret, verifySaturnShiftDelivery, SaturnShiftDeliveryError } from "./saturnshift-delivery.js";
+import { authorizedSubscription, nextCalendarMonth } from "./subscriptions.js";
 
 const SATURNSHIFT_SCRIPT_URL = "https://api.saturnshift.io/checkout.js";
 const SATURNSHIFT_PROVIDER = "saturnshift";
 const BASE_USDC_CONTRACT = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913";
-// These adapters are deliberately named provisional. Enable them only after the
-// merchant's current SaturnShift documentation confirms the exact byte-level
-// signature input, header formats, and JSON field contract.
-const SIGNATURE_SCHEME = "provisional-hmac-sha256-timestamp-dot-body-hex-v1";
-const PAYLOAD_CONTRACT = "provisional-flat-data-v1";
+const SIGNATURE_SCHEME = "saturnshift-t-v1-hmac-sha256-raw-body-v1";
+const PAYLOAD_CONTRACT = "saturnshift-transaction-object-v1";
+const DOCUMENTATION_URL = "https://docs.saturnshift.io/webhooks";
 const MAX_WEBHOOK_BYTES = 64 * 1024;
 const HEADER_NAME = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const SUBSCRIPTION_REFERENCE = /^subscription_invoice:([0-9a-f-]{36})$/i;
 
 class SaturnShiftError extends Error {
   constructor(code, status = 400) {
@@ -104,6 +104,7 @@ function validPublicKey(env) {
   const key = String(env?.SATURNSHIFT_PUBLIC_KEY || "");
   return key.length >= 8 && key.length <= 512 && !/[\u0000-\u001f\u007f]/.test(key) ? key : null;
 }
+function fiatCheckoutReady(env){return env?.SATURNSHIFT_FIAT_WEBHOOK_STATUS==="provider_confirmed";}
 
 function directBaseUsdcConfig(env) {
   const treasury = String(env?.TREASURY_WALLET_ADDRESS || "");
@@ -120,33 +121,15 @@ function directBaseUsdcConfig(env) {
 
 function webhookVerificationReadiness(env) {
   const missing = [];
-  const signatureHeader = String(env?.SATURNSHIFT_WEBHOOK_SIGNATURE_HEADER || "").toLowerCase();
-  const timestampHeader = String(env?.SATURNSHIFT_WEBHOOK_TIMESTAMP_HEADER || "").toLowerCase();
-  let documentationUrl = null;
-  try {
-    documentationUrl = new URL(String(env?.SATURNSHIFT_WEBHOOK_DOCUMENTATION_URL || ""));
-  } catch {}
-  if (env?.SATURNSHIFT_WEBHOOK_ADAPTER_STATUS !== "provider_docs_confirmed") missing.push("SATURNSHIFT_WEBHOOK_ADAPTER_STATUS");
-  if (!documentationUrl || documentationUrl.protocol !== "https:" || !(documentationUrl.hostname === "saturnshift.io" || documentationUrl.hostname.endsWith(".saturnshift.io"))) missing.push("SATURNSHIFT_WEBHOOK_DOCUMENTATION_URL");
-  if (env?.SATURNSHIFT_WEBHOOK_SIGNATURE_SCHEME !== SIGNATURE_SCHEME) missing.push("SATURNSHIFT_WEBHOOK_SIGNATURE_SCHEME");
-  if (typeof env?.SATURNSHIFT_WEBHOOK_SECRET !== "string" || env.SATURNSHIFT_WEBHOOK_SECRET.length < 16) missing.push("SATURNSHIFT_WEBHOOK_SECRET");
-  if (!HEADER_NAME.test(signatureHeader)) missing.push("SATURNSHIFT_WEBHOOK_SIGNATURE_HEADER");
-  if (!HEADER_NAME.test(timestampHeader) || timestampHeader === signatureHeader) missing.push("SATURNSHIFT_WEBHOOK_TIMESTAMP_HEADER");
-  if (env?.SATURNSHIFT_WEBHOOK_PAYLOAD_CONTRACT !== PAYLOAD_CONTRACT) missing.push("SATURNSHIFT_WEBHOOK_PAYLOAD_CONTRACT");
-  if (!clean(env?.SATURNSHIFT_WEBHOOK_SUCCESS_EVENT_TYPE, 100)) missing.push("SATURNSHIFT_WEBHOOK_SUCCESS_EVENT_TYPE");
-  if (!clean(env?.SATURNSHIFT_WEBHOOK_SUCCESS_STATUS, 80)) missing.push("SATURNSHIFT_WEBHOOK_SUCCESS_STATUS");
-  const cryptoMethod = clean(env?.SATURNSHIFT_WEBHOOK_CRYPTO_METHOD, 80);
-  const fiatMethods = String(env?.SATURNSHIFT_WEBHOOK_FIAT_METHODS || "").split(",").map((value) => clean(value, 80)).filter(Boolean);
-  if (!cryptoMethod) missing.push("SATURNSHIFT_WEBHOOK_CRYPTO_METHOD");
-  if (!fiatMethods.length || fiatMethods.includes(cryptoMethod)) missing.push("SATURNSHIFT_WEBHOOK_FIAT_METHODS");
-  if (String(env?.SATURNSHIFT_WEBHOOK_BASE_USDC_ASSET || "").toUpperCase() !== "USDC") missing.push("SATURNSHIFT_WEBHOOK_BASE_USDC_ASSET");
-  if (String(env?.SATURNSHIFT_WEBHOOK_BASE_NETWORK || "").toLowerCase() !== "base") missing.push("SATURNSHIFT_WEBHOOK_BASE_NETWORK");
+  if (!hasDeliverySecret(env?.SATURNSHIFT_WEBHOOK_SECRET)) missing.push("SATURNSHIFT_WEBHOOK_SECRET");
+  if (env?.SATURNSHIFT_WEBHOOK_ENDPOINT_STATUS !== "registered") missing.push("SATURNSHIFT_WEBHOOK_ENDPOINT_STATUS");
   return {
     ready: missing.length === 0,
     missing,
     signature_scheme: SIGNATURE_SCHEME,
     payload_contract: PAYLOAD_CONTRACT,
-    adapter_status: "provisional_until_provider_docs_confirmed",
+    documentation_url: DOCUMENTATION_URL,
+    adapter_status: "provider_documented_crypto_settlement",
   };
 }
 
@@ -158,9 +141,9 @@ function paymentProviderOptions(env) {
       configured: Boolean(validPublicKey(env)) && webhook.ready,
       signed_webhook_configured: webhook.ready,
       delivery_test: { supported: true, secret_configured: hasDeliverySecret(env?.SATURNSHIFT_WEBHOOK_SECRET), payment_activation: false },
-      methods: ["card", "bank", "crypto"],
-      settlement_proof: "verified_signed_webhook_plus_exact_settlement_fields",
-      fiat_policy: "paid_fiat_pending_usdc_reserve; no task publication until reserve coverage is independently gated",
+      methods: fiatCheckoutReady(env)?["card", "bank", "crypto"]:["crypto"],
+      settlement_proof: "documented_signed_payment.paid_webhook_plus_exact_server_amount_and_base_usdc_fields",
+      fiat_policy: "checkout offered; card and ACH fulfillment remains in review until the merchant event schema is independently confirmed",
     },
     base_usdc_direct: {
       configured: Boolean(directBaseUsdcConfig(env)),
@@ -208,8 +191,8 @@ function checkoutPage(order, accessToken, env, requestUrl) {
     idempotencyKey: order.id,
     redirectUrl,
     openInNewTab: false,
-    allowCard: true,
-    allowBank: true,
+    allowCard: fiatCheckoutReady(env),
+    allowBank: fiatCheckoutReady(env),
     allowCrypto: true,
     processingFeeEnabled: false,
   } : null;
@@ -236,6 +219,27 @@ async function saturnShiftCheckoutResponse(env, orderId, accessToken, requestUrl
   }
 }
 
+function subscriptionCheckoutPage(subscription,invoice,env,requestUrl) {
+  const reference=`subscription_invoice:${invoice.id}`;
+  const key=webhookVerificationReadiness(env).ready?validPublicKey(env):null;
+  const {amount,display}=atomicAmount(invoice.amount_atomic);
+  const title=`${clean(subscription.plan_id,60)} subscription`;
+  const redirectUrl=new URL(`/subscriptions/payment-return?invoice=${encodeURIComponent(invoice.id)}`,checkoutOrigin(env,requestUrl)).href;
+  const nonce=crypto.randomUUID().replace(/-/g,"");
+  const config=key?{publicKey:key,amount,currency:"USD",title,description:`MAG subscription invoice ${invoice.id}`,externalReference:reference,idempotencyKey:reference,redirectUrl,openInNewTab:false,allowCard:fiatCheckoutReady(env),allowBank:fiatCheckoutReady(env),allowCrypto:true,processingFeeEnabled:false}:null;
+  const hosted=config?`<section class="panel primary"><p class="eyebrow">Pay MAG</p><h2>Pay $${html(display)} USD</h2><p>Choose card, ACH bank payment, or supported stablecoin in MAG's SaturnShift-hosted checkout.</p><button id="saturnshift-pay" type="button">Choose payment method</button><p id="checkout-error" class="error" role="alert" hidden>Hosted checkout could not load. No payment was recorded.</p><p class="fine">Your PSA/RMM tenant does not need a SaturnShift account. The provider is MAG's merchant payment rail only. Access changes only after a signed final payment event matches this exact server-priced invoice.</p></section>`:`<section class="panel unavailable"><h2>Hosted checkout unavailable</h2><p>MAG has not completed the signing-secret and endpoint-registration checks. No hosted payment can be initiated. Return to billing for the direct Base-USDC option.</p></section>`;
+  const scripts=config?`<script src="${SATURNSHIFT_SCRIPT_URL}"></script><script nonce="${nonce}">(()=>{const e=document.getElementById("checkout-error");try{if(!globalThis.SaturnShift||typeof globalThis.SaturnShift.checkout!=="function")throw new Error("checkout unavailable");globalThis.SaturnShift.checkout(${jsonForScript(config)},"#saturnshift-pay");}catch(_){document.getElementById("saturnshift-pay").disabled=true;e.hidden=false;}})();</script>`:"";
+  return new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MAG subscription checkout</title><style>:root{color-scheme:dark}*{box-sizing:border-box}body{max-width:820px;margin:6vh auto;padding:0 22px;background:#06162c;color:#eef8ff;font:17px/1.55 system-ui}.panel{background:#0a203b;border:1px solid #2b5776;border-radius:18px;padding:24px;margin:18px 0}.primary{border-color:#10d7ec}.eyebrow,a{color:#65e8f4}button{font:inherit;border:0;border-radius:9px;padding:13px;background:#10d7ec;color:#031421;font-weight:850}.fine{color:#a9bdcc;font-size:.9rem}.error,.unavailable{color:#ffd8d8}</style></head><body><a href="/subscriptions/billing">← Subscription billing</a><h1>${html(title)}</h1>${hosted}${scripts}</body></html>`,{status:200,headers:checkoutHeaders(nonce)});
+}
+
+async function saturnShiftSubscriptionCheckoutResponse(env,subscriptionId,invoiceId,accessToken,requestUrl){
+  if(!env?.DB)return json({error:"marketplace_database_not_configured"},503);
+  const subscription=await authorizedSubscription(env.DB,subscriptionId,accessToken);
+  const invoice=await env.DB.prepare("SELECT id,subscription_id,amount_atomic,status FROM subscription_invoices WHERE id=? AND subscription_id=?").bind(invoiceId,subscription.id).first();
+  if(!invoice||invoice.status!=="unpaid")return json({error:"subscription_invoice_not_payable"},409);
+  return subscriptionCheckoutPage(subscription,invoice,env,requestUrl);
+}
+
 function saturnShiftReturnResponse(orderId) {
   const safeOrderId = UUID.test(String(orderId || "")) ? orderId : "unknown";
   return new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MAG payment verification</title><style>body{max-width:720px;margin:12vh auto;padding:22px;background:#06162c;color:#eef8ff;font:18px/1.6 system-ui}.card{background:#0a203b;border:1px solid #2b5776;border-radius:18px;padding:26px}code,a{color:#65e8f4}</style></head><body><main class="card"><h1>Payment verification pending</h1><p>SaturnShift returned the browser for order <code>${html(safeOrderId)}</code>. This redirect is not proof of payment and did not change the order.</p><p>MAG starts the work lifecycle only after an authenticated provider event matches the exact order ID, idempotency key, currency, amount, payment method, and USDC-on-Base settlement fields. Card or bank payments remain in reserve review and do not publish work automatically.</p><a href="/work">View open work</a></main></body></html>`, {
@@ -248,6 +252,11 @@ function saturnShiftReturnResponse(orderId) {
       "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'",
     },
   });
+}
+
+function saturnShiftSubscriptionReturnResponse(invoiceId){
+  const safeInvoiceId=UUID.test(String(invoiceId||""))?invoiceId:"unknown";
+  return new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MAG subscription payment verification</title><style>body{max-width:720px;margin:12vh auto;padding:22px;background:#06162c;color:#eef8ff;font:18px/1.6 system-ui}.card{background:#0a203b;border:1px solid #2b5776;border-radius:18px;padding:26px}code,a{color:#65e8f4}</style></head><body><main class="card"><h1>Payment verification pending</h1><p>SaturnShift returned the browser for subscription invoice <code>${html(safeInvoiceId)}</code>. This redirect is not payment proof and did not change access.</p><p>MAG updates the subscription only after a signed final provider event matches the exact server-priced invoice.</p><a href="/subscriptions/billing">Return to billing</a></main></body></html>`,{status:202,headers:{"content-type":"text/html; charset=utf-8","cache-control":"no-store","x-content-type-options":"nosniff","referrer-policy":"no-referrer","content-security-policy":"default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'"}});
 }
 
 async function readLimitedBody(request, maximum = MAX_WEBHOOK_BYTES) {
@@ -313,18 +322,22 @@ function parsePaymentEvent(payload) {
   if (!payload || Array.isArray(payload) || typeof payload !== "object" || !payload.data || Array.isArray(payload.data) || typeof payload.data !== "object") {
     throw new SaturnShiftError("invalid_saturnshift_payload_contract", 422);
   }
+  const data=payload.data;
+  if(data.object!=="transaction"||!data.amount||typeof data.amount!=="object"||!data.networks||typeof data.networks!=="object")throw new SaturnShiftError("invalid_saturnshift_payload_contract",422);
+  const amountStatus=providerIdentifier(data.amount_status,"invalid_saturnshift_amount_status").toUpperCase();
   return {
     eventId: providerIdentifier(payload.id, "invalid_saturnshift_event_id"),
     eventType: providerIdentifier(payload.type, "invalid_saturnshift_event_type"),
-    paymentId: providerIdentifier(payload.data.paymentId, "invalid_saturnshift_payment_id"),
-    status: providerIdentifier(payload.data.status, "invalid_saturnshift_payment_status"),
-    amountAtomic: usdToAtomic(payload.data.amount),
-    currency: providerIdentifier(payload.data.currency, "invalid_saturnshift_currency").toUpperCase(),
-    paymentMethod: providerIdentifier(payload.data.paymentMethod, "invalid_saturnshift_payment_method"),
-    settlementAsset: providerIdentifier(payload.data.settlementAsset, "invalid_saturnshift_settlement_asset").toUpperCase(),
-    settlementNetwork: providerIdentifier(payload.data.settlementNetwork, "invalid_saturnshift_settlement_network"),
-    externalReference: providerIdentifier(payload.data.externalReference, "invalid_saturnshift_external_reference"),
-    idempotencyKey: providerIdentifier(payload.data.idempotencyKey, "invalid_saturnshift_idempotency_key"),
+    paymentId: providerIdentifier(data.id, "invalid_saturnshift_payment_id"),
+    status: providerIdentifier(data.status, "invalid_saturnshift_payment_status"),
+    amountAtomic: usdToAtomic(data.amount.gross),
+    amountStatus,
+    currency: providerIdentifier(data.currency, "invalid_saturnshift_currency").toUpperCase(),
+    paymentMethod: "crypto",
+    settlementAsset: providerIdentifier(data.asset, "invalid_saturnshift_settlement_asset").toUpperCase(),
+    settlementNetwork: providerIdentifier(data.networks.settlement, "invalid_saturnshift_settlement_network"),
+    externalReference: providerIdentifier(data.external_reference, "invalid_saturnshift_external_reference"),
+    idempotencyKey: providerIdentifier(data.external_reference, "invalid_saturnshift_idempotency_key"),
   };
 }
 
@@ -351,14 +364,14 @@ async function applyVerifiedPayment(db, event, verification, env) {
   const order = await db.prepare("SELECT id,service_id,objective,acceptance_criteria,target_scope,execution_mode,quoted_atomic,payment_status,status,payment_tx_hash,published_task_id FROM service_orders WHERE id=?").bind(event.externalReference).first();
   if (!order) throw new SaturnShiftError("saturnshift_order_not_found", 422);
   if (event.idempotencyKey !== order.id || event.externalReference !== order.id) throw new SaturnShiftError("saturnshift_order_identity_mismatch", 422);
-  if (event.currency !== "USD" || event.amountAtomic !== order.quoted_atomic) throw new SaturnShiftError("saturnshift_payment_amount_mismatch", 422);
-  if (event.eventType !== env.SATURNSHIFT_WEBHOOK_SUCCESS_EVENT_TYPE || event.status !== env.SATURNSHIFT_WEBHOOK_SUCCESS_STATUS) throw new SaturnShiftError("saturnshift_event_is_not_configured_success", 202);
-  const cryptoMethod = clean(env.SATURNSHIFT_WEBHOOK_CRYPTO_METHOD, 80);
-  const fiatMethods = String(env.SATURNSHIFT_WEBHOOK_FIAT_METHODS).split(",").map((value) => clean(value, 80)).filter(Boolean);
+  if (event.currency !== "USD" || event.amountAtomic !== order.quoted_atomic || event.amountStatus!=="EXACT") throw new SaturnShiftError("saturnshift_payment_amount_mismatch", 422);
+  if (event.eventType !== "payment.paid" || event.status !== "paid") throw new SaturnShiftError("saturnshift_event_is_not_final_payment", 202);
+  const cryptoMethod = "crypto";
+  const fiatMethods = [];
   if (event.paymentMethod !== cryptoMethod && !fiatMethods.includes(event.paymentMethod)) throw new SaturnShiftError("unsupported_saturnshift_payment_method", 422);
   const settlesBaseUsdc = event.paymentMethod === cryptoMethod
-    && event.settlementAsset === String(env.SATURNSHIFT_WEBHOOK_BASE_USDC_ASSET).toUpperCase()
-    && event.settlementNetwork.toLowerCase() === String(env.SATURNSHIFT_WEBHOOK_BASE_NETWORK).toLowerCase();
+    && event.settlementAsset === "USDC"
+    && event.settlementNetwork.toLowerCase() === "base";
   if (event.paymentMethod === cryptoMethod && !settlesBaseUsdc) throw new SaturnShiftError("saturnshift_crypto_settlement_is_not_base_usdc", 422);
   if (order.payment_status !== "unsubmitted" || order.status !== "awaiting_payment" || order.payment_tx_hash || order.published_task_id) throw new SaturnShiftError("order_payment_already_in_progress", 409);
   const service = serviceById(order.service_id);
@@ -389,8 +402,8 @@ async function applyVerifiedPayment(db, event, verification, env) {
     provider_status: event.status,
     body_sha256: verification.bodySha256,
     signature_scheme: verification.signatureScheme,
-    signature_adapter: "provisional_provider_docs_confirmation_required",
-    provider_documentation_url: String(env.SATURNSHIFT_WEBHOOK_DOCUMENTATION_URL),
+    signature_adapter: "provider_documented",
+    provider_documentation_url: DOCUMENTATION_URL,
   };
   let results;
   try {
@@ -442,6 +455,41 @@ async function applyVerifiedPayment(db, event, verification, env) {
     : { duplicate: false, task_id: null, payment_status: "paid_fiat_pending_usdc_reserve", reserve_required: true };
 }
 
+async function duplicateSubscriptionPayment(db,event,verification,invoiceId){
+  const claim=await db.prepare("SELECT details FROM subscription_events WHERE event_key=? AND kind='saturnshift_event_claimed'").bind(`saturnshift:event:${event.eventId}`).first();
+  if(!claim)return null;
+  let details;try{details=JSON.parse(claim.details);}catch{return null;}
+  const invoice=await db.prepare("SELECT i.status,i.subscription_id FROM subscription_invoices i WHERE i.id=?").bind(invoiceId).first();
+  if(details.body_sha256===verification.bodySha256&&details.payment_id===event.paymentId&&details.invoice_id===invoiceId&&invoice?.status==="paid")return {duplicate:true,subscription_id:invoice.subscription_id,invoice_id:invoiceId,payment_status:"verified"};
+  return null;
+}
+
+async function applyVerifiedSubscriptionPayment(db,event,verification){
+  const match=SUBSCRIPTION_REFERENCE.exec(event.externalReference);
+  if(!match)throw new SaturnShiftError("saturnshift_subscription_reference_invalid",422);
+  const invoiceId=match[1];
+  const duplicate=await duplicateSubscriptionPayment(db,event,verification,invoiceId);if(duplicate)return duplicate;
+  const row=await db.prepare("SELECT i.id,i.subscription_id,i.amount_atomic,i.status,s.tenant_id,s.paid_through FROM subscription_invoices i JOIN managed_subscriptions s ON s.id=i.subscription_id WHERE i.id=?").bind(invoiceId).first();
+  if(!row)throw new SaturnShiftError("saturnshift_subscription_invoice_not_found",422);
+  if(event.idempotencyKey!==event.externalReference||event.currency!=="USD"||event.amountAtomic!==row.amount_atomic||event.amountStatus!=="EXACT")throw new SaturnShiftError("saturnshift_payment_amount_mismatch",422);
+  if(event.eventType!=="payment.paid"||event.status!=="paid")throw new SaturnShiftError("saturnshift_event_is_not_final_payment",202);
+  if(event.paymentMethod!=="crypto"||event.settlementAsset!=="USDC"||event.settlementNetwork.toLowerCase()!=="base")throw new SaturnShiftError("saturnshift_crypto_settlement_is_not_base_usdc",422);
+  if(row.status!=="unpaid")throw new SaturnShiftError("subscription_invoice_payment_already_in_progress",409);
+  const now=Date.now(),start=Math.max(now,Number(row.paid_through||0)),end=nextCalendarMonth(start);
+  const details={provider:SATURNSHIFT_PROVIDER,event_id:event.eventId,event_type:event.eventType,payment_id:event.paymentId,invoice_id:invoiceId,subscription_id:row.subscription_id,external_reference:event.externalReference,amount_atomic:event.amountAtomic,currency:event.currency,settlement_asset:event.settlementAsset,settlement_network:event.settlementNetwork,body_sha256:verification.bodySha256,signature_scheme:verification.signatureScheme,provider_documentation_url:DOCUMENTATION_URL};
+  let results;
+  try{results=await db.batch([
+    db.prepare("INSERT INTO subscription_events(subscription_id,event_key,kind,details,created_at) SELECT ? ,?,'saturnshift_event_claimed',?,? WHERE EXISTS(SELECT 1 FROM subscription_invoices WHERE id=? AND status='unpaid')").bind(row.subscription_id,`saturnshift:event:${event.eventId}`,JSON.stringify(details),now,invoiceId),
+    db.prepare("INSERT INTO subscription_events(subscription_id,event_key,kind,details,created_at) SELECT ?,?,'saturnshift_payment_claimed',?,? WHERE EXISTS(SELECT 1 FROM subscription_events WHERE event_key=?) AND EXISTS(SELECT 1 FROM subscription_invoices WHERE id=? AND status='unpaid')").bind(row.subscription_id,`saturnshift:payment:${event.paymentId}`,JSON.stringify(details),now,`saturnshift:event:${event.eventId}`,invoiceId),
+    db.prepare("UPDATE subscription_invoices SET status='paid',period_start=?,period_end=?,verified_at=? WHERE id=? AND status='unpaid' AND EXISTS(SELECT 1 FROM subscription_events WHERE event_key=?)").bind(start,end,now,invoiceId,`saturnshift:payment:${event.paymentId}`),
+    db.prepare("UPDATE managed_subscriptions SET status='active',paid_through=?,updated_at=? WHERE id=? AND EXISTS(SELECT 1 FROM subscription_invoices WHERE id=? AND status='paid')").bind(end,now,row.subscription_id,invoiceId),
+    db.prepare("UPDATE managed_tenants SET status='active',updated_at=? WHERE id=? AND EXISTS(SELECT 1 FROM subscription_invoices WHERE id=? AND status='paid')").bind(now,row.tenant_id,invoiceId),
+    db.prepare("INSERT INTO subscription_events(subscription_id,event_key,kind,details,created_at) SELECT ?,?,'saturnshift_payment_verified',?,? WHERE EXISTS(SELECT 1 FROM subscription_invoices WHERE id=? AND status='paid')").bind(row.subscription_id,`${invoiceId}:saturnshift:paid`,JSON.stringify({...details,period_start:start,period_end:end,automatic_debit:false}),now,invoiceId),
+  ]);}catch(error){const replay=await duplicateSubscriptionPayment(db,event,verification,invoiceId);if(replay)return replay;if(/unique|constraint/i.test(String(error?.message||error)))throw new SaturnShiftError("saturnshift_payment_or_event_already_claimed",409);throw error;}
+  if([0,1,2,3,4,5].some(index=>Number(results?.[index]?.meta?.changes||0)!==1))throw new SaturnShiftError("saturnshift_payment_state_conflict",409);
+  return {duplicate:false,subscription_id:row.subscription_id,invoice_id:invoiceId,payment_status:"verified"};
+}
+
 async function handleSaturnShiftWebhook(request, env) {
   if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405, { allow: "POST" });
   if (!(request.headers.get("content-type") || "").toLowerCase().includes("application/json")) return json({ error: "application_json_required" }, 415);
@@ -451,29 +499,18 @@ async function handleSaturnShiftWebhook(request, env) {
       if (delivery.type === "webhook.test") {
         return json({ received: true, signature_verified: true, test_event: true, applied: false, payment_intake_enabled: false });
       }
-      // A valid delivery signature alone does not establish settlement, exact
-      // order correlation, fees, refunds or ACH finality. Leave real events retryable.
-      return json({ error: "saturnshift_payment_contract_not_confirmed", signature_verified: true, applied: false }, 503, { "retry-after": "300" });
+      if (!env?.DB) return json({ error: "marketplace_database_not_configured" }, 503);
+      const event=parsePaymentEvent(delivery.payload);
+      if(SUBSCRIPTION_REFERENCE.test(event.externalReference)){
+        const result=await applyVerifiedSubscriptionPayment(env.DB,event,delivery);
+        return json({received:true,signature_verified:true,duplicate:result.duplicate,subscription_id:result.subscription_id,invoice_id:result.invoice_id,payment_status:result.payment_status},200);
+      }
+      const result=await applyVerifiedPayment(env.DB,event,delivery,env);
+      return json({received:true,signature_verified:true,duplicate:result.duplicate,order_id:event.externalReference,payment_status:result.payment_status,task_id:result.task_id,reserve_required:result.reserve_required},200);
     }
-    if (!env?.DB) return json({ error: "marketplace_database_not_configured" }, 503);
-    const verification = await verifyWebhook(request, env);
-    let payload;
-    try {
-      payload = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(verification.body));
-    } catch {
-      throw new SaturnShiftError("invalid_saturnshift_json", 400);
-    }
-    const event = parsePaymentEvent(payload);
-    const result = await applyVerifiedPayment(env.DB, event, verification, env);
-    return json({
-      received: true,
-      signature_verified: true,
-      duplicate: result.duplicate,
-      order_id: event.externalReference,
-      payment_status: result.payment_status,
-      task_id: result.task_id,
-      reserve_required: result.reserve_required,
-    }, 200);
+    const readiness=webhookVerificationReadiness(env);
+    if(!readiness.ready)return json({error:"saturnshift_webhook_verification_not_configured"},503);
+    return json({error:"invalid_saturnshift_delivery_signature"},401);
   } catch (error) {
     if (error instanceof SaturnShiftDeliveryError) return json({ error: error.code }, error.status);
     if (error instanceof SaturnShiftError) {
@@ -493,6 +530,8 @@ export {
   handleSaturnShiftWebhook,
   paymentProviderOptions,
   saturnShiftCheckoutResponse,
+  saturnShiftSubscriptionCheckoutResponse,
   saturnShiftReturnResponse,
+  saturnShiftSubscriptionReturnResponse,
   webhookVerificationReadiness,
 };

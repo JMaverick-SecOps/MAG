@@ -8,16 +8,16 @@ The public checkout key is connected. MAG-specific server API access and the web
 
 Webhook endpoint: https://mavverick-scout.magai.workers.dev/api/webhooks/saturnshift
 
-The provider-maintained [WordPress webhook source](https://plugins.svn.wordpress.org/saturnshift-for-woocommerce/trunk/includes/class-saturnshift-webhook.php) documents a combined `SaturnShift-Signature: t=...,v1=...` header, HMAC over the timestamp, a dot and raw body, and a `webhook.test` event. MAG now supports that **test-only** handshake with exact-byte verification, a 64 KiB body limit and a five-minute timestamp window. A valid test never writes an order, payment, task or entitlement. Real events return a retryable 503 until the payment contract is confirmed. The existing provisional financial adapter has NOT been enabled.
+The provider's current [webhook documentation](https://docs.saturnshift.io/webhooks) specifies a combined `SaturnShift-Signature: t=...,v1=...` header, HMAC over the timestamp, a dot and raw body, a transaction payload and final `payment.paid` settlement event. MAG implements that published contract with exact-byte verification, a 64 KiB body limit, a five-minute timestamp window, event/payment replay claims and exact server-side amount matching. `payment.succeeded` is not treated as final settlement. Crypto activation additionally requires `asset=USDC` and settlement network `BASE`. A valid `webhook.test` never writes an order, invoice, task or entitlement.
 
 The [provider client source](https://plugins.svn.wordpress.org/saturnshift-for-woocommerce/trunk/includes/class-saturnshift-client.php) exposes OAuth/PKCE and authenticated webhook registration. MAG must have its own registration, not reuse the WooCommerce client identity.
 
 When access is issued:
 
-1. Deliver the secret securely into the Worker's `SATURNSHIFT_WEBHOOK_SECRET` binding, never chat, Git, query strings or logs. Server API credentials must likewise stay server-side.
-2. Confirm secret encoding, timestamp/retry semantics, signed merchant/order IDs, amount units, fees, payment method, partial refunds and ACH returns. A payment-success event is not automatically external settlement.
-3. Have SaturnShift deliver a signed test event; retain a sanitized delivery receipt. Validate fixture failures and duplicate delivery before enabling any financial event adapter.
-4. Run an explicitly owner-approved sandbox or live payment end-to-end. A redirect is not payment proof.
+1. Sign in to the SaturnShift Developers page, register `https://mavverick-scout.magai.workers.dev/api/webhooks/saturnshift`, subscribe at least to `payment.paid`, and securely deliver the endpoint secret into the Worker's `SATURNSHIFT_WEBHOOK_SECRET` binding. Never put it in chat, Git, query strings or logs.
+2. Set `SATURNSHIFT_WEBHOOK_ENDPOINT_STATUS=registered` only after the dashboard shows the exact MAG endpoint. Keep `SATURNSHIFT_FIAT_WEBHOOK_STATUS` unconfirmed until provider documentation or signed fixtures establish card/ACH status, amount, return and refund fields.
+3. Send a signed test event and retain a sanitized delivery receipt. Validate bad HMAC, stale timestamp, altered body and duplicate delivery failures.
+4. Run an explicitly owner-approved minimum-value payment end-to-end. Confirm the signed `payment.paid` event and dashboard/REST reconciliation before treating the checkout as production-ready. A browser redirect is not payment proof.
 
 The [published payment overview](https://www.saturnshift.io/accept-cards-ach-and-crypto/) separates card/ACH bank payouts from crypto settlement. Do not promise automatic card/ACH-to-USDC conversion. USDC reserve allocation still needs explicit owner approval.
 
@@ -26,7 +26,8 @@ The [published payment overview](https://www.saturnshift.io/accept-cards-ach-and
 - All four Security Evidence Lab cards select their matching package, fixed price, repository scope and acceptance form. Architecture Threat Model is now in the catalog. Every specialized security package rejects generic-order bypasses.
 - Security intake remains uncharged until an isolated reviewer/scanner is actually available. Selecting a package does not certify delivery capacity.
 - RMM product navigation exposes the fictional demo, authenticated console, ScreenConnect setup and subscription signup. Each advertised plan preselects its own plan; the server remains authoritative for pricing and entitlement.
-- Verified subscription payment activates a logically separate tenant in shared infrastructure. Branding, tickets and evidence remain tenant-scoped. This is not dedicated infrastructure.
+- Signup immediately activates a logically separate tenant for a 30-day free trial without a payment method. Verified payment extends access after the trial. Branding, tickets and evidence remain tenant-scoped. This is not dedicated infrastructure.
+- SaturnShift is MAG's merchant payment rail, not a required tenant checkout provider. QuickBooks, Xero and NetSuite are separate provider-neutral PSA accounting connectors; none is represented as active until its tenant-scoped OAuth/integration-role flow and reconciliation tests exist.
 - ScreenConnect has a read-only inventory adapter requiring a separately licensed instance, scoped configuration and live validation. M365/Intune and Google Workspace integrations are explicitly planned, not available or connected. Remote control and automatic remediation remain disabled.
 
 Product information architecture was informed by the [ConnectWise platform](https://www.connectwise.com/platform) and [N-central feature overview](https://www.n-able.com/products/n-central-rmm/features-summary): demonstrate the workflow, clarify service/endpoint operations, expose integrations and make onboarding obvious. No feature parity, certification, endorsement or shared implementation is claimed.
@@ -39,7 +40,7 @@ The passing fabricated case documents the verifier's upstream trust boundary. It
 
 The live scan found 12 listings. Funding snapshots are not escrow. Registry-defect work (#6) is inspectable but already has 32 submissions; novelty must be established before selecting it. Small hook-regression listings (#9–12, #14–18) require isolated code review/execution and distinct acceptance evidence. The session donation (#13) is not an earning task, and the large lottery (#19) had no verified funding snapshot. None was submitted or claimed complete in this pass.
 
-Regression result before release: **135 JavaScript tests and 7 migration-mail tests passed**. Deployment and community-publication receipts must be recorded separately; test success alone does not establish either outcome.
+Current regression result before release: **153 JavaScript tests and 7 migration-mail tests passed**. Deployment and community-publication receipts must be recorded separately; test success alone does not establish either outcome.
 
 ## Release receipts
 

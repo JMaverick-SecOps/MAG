@@ -5,14 +5,14 @@ import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import { createOrder, submitPaymentReceipt } from "../src/commerce.js";
 import { claimPreimage, claimTask, completeSubmission, submissionPreimage, submitWork } from "../src/marketplace.js";
+import { createSubscription, subscriptionState } from "../src/subscriptions.js";
 import {
   BASE_USDC_CONTRACT,
-  PAYLOAD_CONTRACT,
   SATURNSHIFT_SCRIPT_URL,
-  SIGNATURE_SCHEME,
   handleSaturnShiftWebhook,
   paymentProviderOptions,
   saturnShiftCheckoutResponse,
+  saturnShiftSubscriptionCheckoutResponse,
   saturnShiftReturnResponse,
   webhookVerificationReadiness,
 } from "../src/saturnshift-checkout.js";
@@ -102,19 +102,9 @@ const WEBHOOK_SECRET = "test-only-webhook-secret-with-32-bytes";
 function webhookEnv(db) {
   return {
     DB: db,
-    SATURNSHIFT_WEBHOOK_ADAPTER_STATUS: "provider_docs_confirmed",
-    SATURNSHIFT_WEBHOOK_DOCUMENTATION_URL: "https://docs.saturnshift.io/merchant-webhooks",
-    SATURNSHIFT_WEBHOOK_SIGNATURE_SCHEME: SIGNATURE_SCHEME,
     SATURNSHIFT_WEBHOOK_SECRET: WEBHOOK_SECRET,
-    SATURNSHIFT_WEBHOOK_SIGNATURE_HEADER: "x-saturnshift-signature",
-    SATURNSHIFT_WEBHOOK_TIMESTAMP_HEADER: "x-saturnshift-timestamp",
-    SATURNSHIFT_WEBHOOK_PAYLOAD_CONTRACT: PAYLOAD_CONTRACT,
-    SATURNSHIFT_WEBHOOK_SUCCESS_EVENT_TYPE: "payment.succeeded",
-    SATURNSHIFT_WEBHOOK_SUCCESS_STATUS: "succeeded",
-    SATURNSHIFT_WEBHOOK_CRYPTO_METHOD: "crypto",
-    SATURNSHIFT_WEBHOOK_FIAT_METHODS: "card,bank",
-    SATURNSHIFT_WEBHOOK_BASE_USDC_ASSET: "USDC",
-    SATURNSHIFT_WEBHOOK_BASE_NETWORK: "Base",
+    SATURNSHIFT_WEBHOOK_ENDPOINT_STATUS: "registered",
+    SATURNSHIFT_FIAT_WEBHOOK_STATUS: "provider_confirmed",
   };
 }
 
@@ -135,17 +125,19 @@ async function orderFixture(db) {
 function providerEvent(order, overrides = {}) {
   return {
     id: overrides.id || "evt_test_crypto_1",
-    type: overrides.type || "payment.succeeded",
+    type: overrides.type || "payment.paid",
     data: {
-      paymentId: overrides.paymentId || "pay_test_crypto_1",
-      status: overrides.status || "succeeded",
-      amount: overrides.amount || "99.00",
+      object: overrides.object || "transaction",
+      id: overrides.paymentId || "pay_test_crypto_1",
+      merchant_id: 116,
+      status: overrides.status || "paid",
+      amount_status: overrides.amountStatus || "EXACT",
+      asset: overrides.settlementAsset || "USDC",
       currency: overrides.currency || "USD",
-      paymentMethod: overrides.paymentMethod || "crypto",
-      settlementAsset: overrides.settlementAsset || "USDC",
-      settlementNetwork: overrides.settlementNetwork || "Base",
-      externalReference: overrides.externalReference || order.id,
-      idempotencyKey: overrides.idempotencyKey || order.id,
+      amount: {gross:overrides.amount || "99.00",net:overrides.amount || "99.00",psp_fee:"0.00",gas_fee:"0.00",bridge_fee:"0.00"},
+      networks: {payment:overrides.paymentNetwork || "BASE",settlement:overrides.settlementNetwork || "BASE"},
+      tx_hashes: {source:"0x"+"1".repeat(64),bridge:null,settlement:"0x"+"2".repeat(64)},
+      external_reference: overrides.externalReference || order.id,
     },
   };
 }
@@ -160,8 +152,9 @@ async function signedRequest(payload, env, { signature = null, timestamp = Math.
     method: "POST",
     headers: {
       "content-type": "application/json",
-      "x-saturnshift-signature": signature || `sha256=${hex}`,
-      "x-saturnshift-timestamp": String(timestamp),
+      "SaturnShift-Signature": signature || `t=${timestamp},v1=${hex}`,
+      "SaturnShift-Event-Id": payload.id,
+      "SaturnShift-Event-Type": payload.type,
     },
     body,
   });
@@ -220,7 +213,7 @@ test("redirect response never changes payment state or claims payment proof", as
   assert.equal(db.prepare("SELECT COUNT(*) count FROM payment_provider_events").first().count, 0);
 });
 
-test("webhook is disabled until the provisional adapter is explicitly tied to provider documentation", async (t) => {
+test("hosted financial checkout stays disabled until the documented endpoint is registered", async (t) => {
   const db = new TestD1();
   t.after(() => db.close());
   const order = await orderFixture(db);
@@ -279,7 +272,7 @@ test("verified crypto event publishes exactly one task only for explicit USDC-on
   assert.equal(db.prepare("SELECT COUNT(*) count FROM payment_provider_receipt_claims").first().count, 1);
   const event = db.prepare("SELECT details FROM order_events WHERE order_id=? AND kind='saturnshift_payment_verified_and_task_published'").bind(order.id).first();
   assert.equal(JSON.parse(event.details).settlement_asset, "USDC");
-  assert.equal(JSON.parse(event.details).settlement_network, "Base");
+  assert.equal(JSON.parse(event.details).settlement_network, "BASE");
   assert.equal(JSON.parse(event.details).payout_authority, "owner_signature_required");
 
   const replay = await handleSaturnShiftWebhook(await signedRequest(payload, env), env);
@@ -289,7 +282,7 @@ test("verified crypto event publishes exactly one task only for explicit USDC-on
   assert.equal(db.prepare("SELECT COUNT(*) count FROM payment_provider_events").first().count, 1);
 });
 
-test("verified card payment is held for USDC reserve coverage and does not publish work", async (t) => {
+test("an undocumented fiat-shaped event is rejected and does not publish work", async (t) => {
   const db = new TestD1();
   t.after(() => db.close());
   const order = await orderFixture(db);
@@ -297,21 +290,16 @@ test("verified card payment is held for USDC reserve coverage and does not publi
   const payload = providerEvent(order, {
     id: "evt_test_card_1",
     paymentId: "pay_test_card_1",
-    paymentMethod: "card",
     settlementAsset: "USD",
-    settlementNetwork: "bank",
+    settlementNetwork: "BANK",
   });
   const response = await handleSaturnShiftWebhook(await signedRequest(payload, env), env);
-  assert.equal(response.status, 200);
-  const body = await response.json();
-  assert.equal(body.payment_status, "paid_fiat_pending_usdc_reserve");
-  assert.equal(body.reserve_required, true);
-  assert.equal(body.task_id, null);
+  assert.equal(response.status, 422);
+  assert.deepEqual(await response.json(),{error:"saturnshift_crypto_settlement_is_not_base_usdc"});
   const stored = db.prepare("SELECT status,payment_status,published_task_id,payment_provider FROM service_orders WHERE id=?").bind(order.id).first();
-  assert.deepEqual({ ...stored }, { status: "payment_review", payment_status: "paid_fiat_pending_usdc_reserve", published_task_id: null, payment_provider: "saturnshift" });
+  assert.deepEqual({ ...stored }, { status: "awaiting_payment", payment_status: "unsubmitted", published_task_id: null, payment_provider: "base_usdc_direct" });
   assert.equal(db.prepare("SELECT COUNT(*) count FROM tasks").first().count, 0);
-  assert.equal(db.prepare("SELECT processing_status FROM payment_provider_events").first().processing_status, "accepted_pending_reserve");
-  assert.equal(db.prepare("SELECT COUNT(*) count FROM order_events WHERE kind='saturnshift_fiat_paid_pending_usdc_reserve'").first().count, 1);
+  assert.equal(db.prepare("SELECT COUNT(*) count FROM payment_provider_events").first().count,0);
 });
 
 test("crypto success on any settlement other than USDC on Base is rejected without claims", async (t) => {
@@ -379,4 +367,21 @@ test("synthetic signed provider settlement supports claimed delivery and one acc
   assert.equal(db.prepare("SELECT payment_tx_hash FROM service_orders WHERE id=?").bind(order.id).first().payment_tx_hash,null);
   assert.equal((await completeSubmission(db,submission.id,{})).notification,"deduplicated");
   assert.equal(db.prepare("SELECT COUNT(*) n FROM notification_events").first().n,1);
+});
+
+test("MAG subscription checkout uses the tenant-independent merchant rail and extends access once",async t=>{
+  const db=new TestD1();t.after(()=>db.close());
+  const now=Date.now(),env={...webhookEnv(db),SCOUT_ADMIN_TOKEN:"test-owner",TREASURY_WALLET_ADDRESS:TREASURY,MAG_SUBSCRIPTION_PLANS:"psa-workspace",SATURNSHIFT_PUBLIC_KEY:"pk_test_mag_merchant",SCOUT_ENVIRONMENT:"production"};
+  const created=await createSubscription(env,{name:"Tenant customer",contact_email:"owner@tenant-pay.example",plan_id:"psa-workspace",max_assets:4,authorized_domains:["tenant-pay.example"],authorization_attested:true,data_processing_consent:true,terms_accepted:true,request_key:crypto.randomUUID()},now);
+  const checkout=await saturnShiftSubscriptionCheckoutResponse(env,created.id,created.invoice_id,created.access_token,"https://example.test/subscriptions/checkout");
+  assert.equal(checkout.status,200);const markup=await checkout.text();
+  assert.match(markup,new RegExp(`subscription_invoice:${created.invoice_id}`));assert.match(markup,/does not need a SaturnShift account/);assert.match(markup,/allowBank":true/);
+  const payload=providerEvent({id:created.invoice_id},{paymentId:"pay_subscription_1",amount:"79.00",externalReference:`subscription_invoice:${created.invoice_id}`});
+  const paid=await handleSaturnShiftWebhook(await signedRequest(payload,env),env);
+  assert.equal(paid.status,200);assert.deepEqual(await paid.json(),{received:true,signature_verified:true,duplicate:false,subscription_id:created.id,invoice_id:created.invoice_id,payment_status:"verified"});
+  assert.equal(db.prepare("SELECT status FROM subscription_invoices WHERE id=?").bind(created.invoice_id).first().status,"paid");
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM tasks").first().n,0);
+  const state=await subscriptionState(db,created.id,created.access_token,now);assert.equal(state.entitled,true);assert.ok(Number(state.subscription.paid_through)>created.trial_ends_at);
+  const replay=await handleSaturnShiftWebhook(await signedRequest(payload,env),env);assert.equal((await replay.json()).duplicate,true);
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM subscription_events WHERE kind='saturnshift_payment_verified'").first().n,1);
 });

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { TestD1 } from "./helpers/d1.js";
 import { USDC, createPaymentIntent, transferRequest, verifyPaymentIntent } from "../src/payment-intents.js";
-import { createSubscription, subscriptionIntent, submitSubscriptionReceipt, processSubscriptions, subscriptionState, cancelSubscription, nextCalendarMonth, monthlyQuote } from "../src/subscriptions.js";
+import { createSubscription, subscriptionIntent, submitSubscriptionReceipt, processSubscriptions, subscriptionState, cancelSubscription, nextCalendarMonth, monthlyQuote, TRIAL_DAYS } from "../src/subscriptions.js";
 import { SERVICES, createOrder, processPendingOrders, submitPaymentReceipt } from "../src/commerce.js";
 import { catalogDefaults, catalogPage } from "../src/catalog-checkout.js";
 import worker from "../src/index.js";
@@ -60,7 +60,7 @@ test("new orders cannot submit an unbound payment and publish only once after fi
   assert.equal((await processPendingOrders(env,rpcFixture(intent))).verified,0);
   assert.equal(db.prepare("SELECT COUNT(*) n FROM tasks").first().n,1);
 });
-const subscribe=()=>({name:"Example business",contact_email:"owner@example.test",plan_id:"psa-workspace",max_assets:3,authorized_domains:["example.test"],authorization_attested:true,data_processing_consent:true,terms_accepted:true,request_key:crypto.randomUUID()});
+const subscribe=()=>{const nonce=crypto.randomUUID().slice(0,8);return {name:"Example business",contact_email:`owner@${nonce}.example.test`,plan_id:"psa-workspace",max_assets:3,authorized_domains:[`${nonce}.example.test`],authorization_attested:true,data_processing_consent:true,terms_accepted:true,request_key:crypto.randomUUID()};};
 const environment=db=>({DB:db,SCOUT_ADMIN_TOKEN:"test-only-owner-token",TREASURY_WALLET_ADDRESS:TREASURY,MAG_SUBSCRIPTION_PLANS:"psa-workspace"});
 test("subscription quote is server-controlled and calendar month handling clamps month end",()=>{
   assert.equal(monthlyQuote("psa-workspace",100),"79000000");
@@ -71,7 +71,9 @@ test("subscription quote is server-controlled and calendar month handling clamps
 test("paid subscription activates once, renews once, cancels and expires without any debit",async t=>{
   const db=new TestD1();t.after(()=>db.close());const env=environment(db),now=Date.now();
   const s=await createSubscription(env,subscribe(),now);
-  assert.equal((await subscriptionState(db,s.id,s.access_token,now)).entitled,false);
+  const trial=await subscriptionState(db,s.id,s.access_token,now);
+  assert.equal(trial.entitled,true);assert.equal(trial.billing_state,"trialing");assert.equal(trial.trial.days,TRIAL_DAYS);
+  assert.equal(trial.trial.ends_at,now+TRIAL_DAYS*86400000);assert.equal(s.trial_ends_at,trial.trial.ends_at);
   await subscriptionIntent(env,s.id,s.invoice_id,s.access_token);
   await submitSubscriptionReceipt(env,s.id,s.invoice_id,s.access_token,{tx_hash:TX},now);
   const intent=db.prepare("SELECT * FROM checkout_payment_intents").first();
@@ -101,6 +103,20 @@ test("subscription checkout refuses cross-tenant access, disabled plans and repl
   await subscriptionIntent(env,second.id,second.invoice_id,second.access_token);
   await assert.rejects(()=>submitSubscriptionReceipt(env,second.id,second.invoice_id,second.access_token,{tx_hash:TX}),/already claimed/);
   assert.equal(db.prepare("SELECT status FROM subscription_invoices WHERE id=?").bind(second.invoice_id).first().status,"unpaid");
+});
+test("free trial is one per contact or authorized organization domain and expires without automatic payment",async t=>{
+  const db=new TestD1();t.after(()=>db.close());const env=environment(db),now=Date.UTC(2026,7,28);
+  const input=subscribe(),created=await createSubscription(env,input,now);
+  const duplicateEmail={...subscribe(),contact_email:input.contact_email};
+  await assert.rejects(()=>createSubscription(env,duplicateEmail,now),/trial already exists/);
+  const duplicateDomain={...subscribe(),authorized_domains:input.authorized_domains};
+  await assert.rejects(()=>createSubscription(env,duplicateDomain,now),/trial already exists/);
+  const end=created.trial_ends_at;
+  assert.equal(db.prepare("SELECT status FROM subscription_invoices WHERE id=?").bind(created.invoice_id).first().status,"unpaid");
+  await processSubscriptions(env,async()=>{throw new Error("no network expected");},end+1);
+  const state=await subscriptionState(db,created.id,created.access_token,end+1);
+  assert.equal(state.entitled,false);assert.equal(state.subscription.status,"past_due");assert.equal(state.automatic_debit,false);
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM subscription_events WHERE kind='trial_started'").first().n,1);
 });
 test("browser checkout accepts prefilled catalog data and overrides tampered prices and modes",async t=>{
   const db=new TestD1();t.after(()=>db.close());
@@ -164,10 +180,17 @@ test("subscription forms expose only enabled plans and reject cross-origin signu
  const db=new TestD1();t.after(()=>db.close());const env=environment(db);
  const page=await worker.fetch(new Request("https://example.test/hire?service=managed-ops-psa"),env);
  const html=await page.text();
- assert.ok(html.includes('<option value="psa-workspace">'));
- assert.ok(!html.includes('<option value="managed-security">'));
+  assert.ok(html.includes('<option value="psa-workspace">'));
+  assert.ok(!html.includes('<option value="managed-security">'));
+  assert.match(html,/Start 30-day free trial/);assert.match(html,/does not need SaturnShift/);
  const rejected=await worker.fetch(new Request("https://example.test/subscriptions",{method:"POST",headers:{origin:"https://evil.example"},body:new URLSearchParams()}),env);
  assert.equal(rejected.status,403);
+});
+test("subscription plan API describes MAG merchant checkout without imposing it on tenant accounting",async t=>{
+ const db=new TestD1();t.after(()=>db.close());const env=environment(db);
+ const response=await worker.fetch(new Request("https://example.test/api/subscriptions/plans"),env);
+ assert.equal(response.status,200);
+ assert.deepEqual(await response.json(),{enabled_plans:["psa-workspace"],trial_days:30,billing:"mag_merchant_checkout",payment_methods:["card","ach","stablecoin","base_native_usdc"],tenant_payment_provider_required:false,automatic_debit:false});
 });
 test("receipt delivery can be retried without creating another event or claim",async t=>{
  const db=new TestD1();t.after(()=>db.close());const env=environment(db);

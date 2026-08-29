@@ -1,5 +1,6 @@
-import { createSubscription, subscriptionState, subscriptionIntent, submitSubscriptionReceipt, cancelSubscription, enabledPlans } from "./subscriptions.js";
+import { createSubscription, subscriptionState, subscriptionIntent, submitSubscriptionReceipt, cancelSubscription, enabledPlans, TRIAL_DAYS } from "./subscriptions.js";
 import { walletCheckoutMarkup } from "./wallet-checkout-view.js";
+import { saturnShiftSubscriptionCheckoutResponse, saturnShiftSubscriptionReturnResponse } from "./saturnshift-checkout.js";
 const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]);
 function customerSession(request) {
   const value=(request.headers.get("cookie")||"").split(";").map(s=>s.trim()).find(s=>s.startsWith("__Host-mag_workspace="))?.split("=")[1]||"";
@@ -24,8 +25,10 @@ async function billingPage(env,session,created=null) {
   const state=await subscriptionState(env.DB,session.tenant_id,session.access_token), s=state.subscription;
   const invoice=state.invoices.find(i=>i.status==="unpaid");
   const amount=(Number(s.monthly_atomic)/1e6).toLocaleString("en-US");
-  const payment=invoice?walletCheckoutMarkup({accessToken:session.access_token,intentUrl:`/api/subscriptions/${s.id}/invoices/${invoice.id}/payment-intent`,receiptUrl:`/api/subscriptions/${s.id}/invoices/${invoice.id}/payment-receipts`,amount:Number(invoice.amount_atomic)/1e6}):"";
-  const body=`<h1>Your subscription</h1><section><h2>${esc(s.plan_id)}</h2><p><strong>${amount} USDC / calendar month</strong> · ${s.endpoint_limit} device limit</p><p>Status: ${esc(s.status)} · ${state.entitled?"Paid access active":"Awaiting paid activation"}</p><p>Paid through: ${s.paid_through?esc(new Date(s.paid_through).toISOString()):"Starts after payment verification"}</p><p>Automatic wallet debit: <strong>off</strong>. An invoice is generated seven days before renewal. Cancel to stop future invoices; access lasts through the paid period.</p>${created?`<details><summary>Save your workspace recovery credentials</summary><p>Tenant: <code>${esc(session.tenant_id)}</code></p><p>Access token: <code>${esc(session.access_token)}</code></p><p>Saved securely in this browser's HTTP-only session cookie. Keep a private recovery copy.</p></details>`:""}<a href="/ops/console">Open workspace →</a></section>${payment}<section><h2>Invoices</h2>${state.invoices.map(i=>`<p><code>${esc(i.id)}</code> · ${Number(i.amount_atomic)/1e6} USDC · ${esc(i.status)}</p>`).join("")}<a href="/subscriptions/billing">Refresh payment status</a></section>${s.cancel_at_period_end?"<p>Cancellation is scheduled. No future invoice will be generated.</p>":`<form method="post" action="/subscriptions/cancel"><p>Cancel at the end of the current paid period. No automatic refund or treasury transfer is performed.</p><button>Cancel future renewals</button></form>`}`;
+  const payment=invoice?`<section><h2>Pay MAG</h2><p><a href="/subscriptions/checkout?invoice=${encodeURIComponent(invoice.id)}">Pay by card, ACH, or stablecoin →</a></p><p class="muted">Hosted payment opens only after MAG's signing secret and webhook endpoint are verified. Direct Base USDC remains available below.</p></section>${walletCheckoutMarkup({accessToken:session.access_token,intentUrl:`/api/subscriptions/${s.id}/invoices/${invoice.id}/payment-intent`,receiptUrl:`/api/subscriptions/${s.id}/invoices/${invoice.id}/payment-receipts`,amount:Number(invoice.amount_atomic)/1e6})}`:"";
+  const trial=state.trial?.active?`<p><strong>${state.trial.days}-day free trial active</strong> through ${esc(new Date(state.trial.ends_at).toISOString())}. No payment method was required and no automatic charge will occur.</p>`:"";
+  const access=state.billing_state==="trialing"?"Trial access active":state.entitled?"Paid access active":"Payment required to restore access";
+  const body=`<h1>Your subscription</h1><section><h2>${esc(s.plan_id)}</h2><p><strong>$${amount} USD / calendar month after trial</strong> · ${s.endpoint_limit} device limit</p><p>Status: ${esc(state.billing_state)} · ${access}</p>${trial}<p>Access through: ${s.paid_through?esc(new Date(s.paid_through).toISOString()):"Payment required"}</p><p>MAG is the merchant. Your PSA tenant does not need a SaturnShift account and may use its own accounting integrations. Pay MAG's invoice by an available hosted card, ACH, or stablecoin method, or by direct Base USDC. Automatic debit: <strong>off</strong>.</p>${created?`<details><summary>Save your workspace recovery credentials</summary><p>Tenant: <code>${esc(session.tenant_id)}</code></p><p>Access token: <code>${esc(session.access_token)}</code></p><p>Saved securely in this browser's HTTP-only session cookie. Keep a private recovery copy.</p></details>`:""}<a href="/ops/console">Open workspace →</a></section>${payment}<section><h2>Invoices</h2>${state.invoices.map(i=>`<p><code>${esc(i.id)}</code> · $${Number(i.amount_atomic)/1e6} USD · ${esc(i.status)}${i.period_start?` · service period starts ${esc(new Date(i.period_start).toISOString())}`:""}</p>`).join("")}<a href="/subscriptions/billing">Refresh payment status</a></section>${s.cancel_at_period_end?"<p>Cancellation is scheduled. No future invoice will be generated.</p>":`<form method="post" action="/subscriptions/cancel"><p>Cancel before the trial or paid access period ends. No automatic charge, refund, or treasury transfer is performed.</p><button>Cancel future renewals</button></form>`}`;
   return page(body,created?201:200,created?sessionCookie(session.tenant_id,session.access_token):undefined);
 }
 async function handleSubscriptionRoutes(request,env,url) {
@@ -34,7 +37,7 @@ async function handleSubscriptionRoutes(request,env,url) {
   const session=customerSession(request), bearer=(request.headers.get("authorization")||"").replace(/^Bearer /,"");
   if (request.method==="POST"&&((request.headers.has("origin")&&request.headers.get("origin")!==url.origin)||(session&&!request.headers.has("authorization")&&request.headers.get("origin")!==url.origin)))return json({error:"same_origin_required"},403);
   try {
-    if (request.method==="GET"&&url.pathname==="/api/subscriptions/plans")return json({enabled_plans:enabledPlans(env),billing:"prepaid_base_usdc",automatic_debit:false});
+    if (request.method==="GET"&&url.pathname==="/api/subscriptions/plans")return json({enabled_plans:enabledPlans(env),trial_days:TRIAL_DAYS,billing:"mag_merchant_checkout",payment_methods:["card","ach","stablecoin","base_native_usdc"],tenant_payment_provider_required:false,automatic_debit:false});
     if(request.method==="POST"&&["/subscriptions","/api/subscriptions"].includes(url.pathname)) {
       const raw=await input(request), form=request.headers.get("content-type")?.includes("application/x-www-form-urlencoded");
       const normalized=form?{...raw,authorized_domains:[raw.authorized_domain],max_assets:Number(raw.max_assets),authorization_attested:raw.authorization_attested==="yes",data_processing_consent:raw.authorization_attested==="yes",terms_accepted:raw.terms_accepted==="yes"}:raw;
@@ -42,6 +45,12 @@ async function handleSubscriptionRoutes(request,env,url) {
       return form?billingPage(env,{tenant_id:created.tenant_id,access_token:created.access_token},created):json({subscription:created},201);
     }
     if(request.method==="GET"&&url.pathname==="/subscriptions/billing")return session?billingPage(env,session):page('<h1>Open your workspace first</h1><a href="/ops/console">Workspace sign-in</a>',401);
+    if(request.method==="GET"&&url.pathname==="/subscriptions/checkout"){
+      if(!session)return json({error:"workspace_session_required"},401);
+      const invoiceId=url.searchParams.get("invoice")||"";
+      return saturnShiftSubscriptionCheckoutResponse(env,session.tenant_id,invoiceId,session.access_token,url.href);
+    }
+    if(request.method==="GET"&&url.pathname==="/subscriptions/payment-return")return saturnShiftSubscriptionReturnResponse(url.searchParams.get("invoice"));
     if(request.method==="POST"&&url.pathname==="/subscriptions/cancel") {
       if(!session)return json({error:"workspace_session_required"},401);
       await cancelSubscription(env.DB,session.tenant_id,session.access_token);

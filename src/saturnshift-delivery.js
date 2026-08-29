@@ -1,6 +1,5 @@
-// Provider-published reference (read as source, never executed):
-// https://plugins.svn.wordpress.org/saturnshift-for-woocommerce/trunk/includes/class-saturnshift-webhook.php
-// This verifies delivery ONLY. Payment/settlement interpretation is not enabled.
+// Provider-published contract (read as source, never executed):
+// https://docs.saturnshift.io/webhooks
 const MAX_BODY_BYTES = 64 * 1024;
 const MAX_CLOCK_SKEW_SECONDS = 300;
 class SaturnShiftDeliveryError extends Error {
@@ -8,6 +7,10 @@ class SaturnShiftDeliveryError extends Error {
 }
 function hasDeliverySecret(secret) {
   return typeof secret === "string" && secret.length >= 16 && secret.length <= 512;
+}
+async function digestHex(value) {
+  const bytes=typeof value==="string"?new TextEncoder().encode(value):value;
+  return [...new Uint8Array(await crypto.subtle.digest("SHA-256",bytes))].map(byte=>byte.toString(16).padStart(2,"0")).join("");
 }
 async function verifySaturnShiftDelivery(request, secret, nowSeconds = Math.floor(Date.now() / 1000)) {
   if (!hasDeliverySecret(secret)) throw new SaturnShiftDeliveryError("saturnshift_delivery_secret_not_configured", 503);
@@ -48,13 +51,17 @@ async function verifySaturnShiftDelivery(request, secret, nowSeconds = Math.floo
   if (!await crypto.subtle.verify("HMAC", key, signature, signed)) {
     throw new SaturnShiftDeliveryError("invalid_saturnshift_delivery_signature", 401);
   }
+  const body=signed.subarray(prefix.length);
   let payload;
-  try { payload = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(signed.subarray(prefix.length))); }
+  try { payload = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(body)); }
   catch { throw new SaturnShiftDeliveryError("invalid_saturnshift_delivery_json", 400); }
   if (!payload || typeof payload !== "object" || Array.isArray(payload) || typeof payload.type !== "string") {
     throw new SaturnShiftDeliveryError("invalid_saturnshift_delivery_event", 400);
   }
-  // The event-ID header is not signed by this scheme. Never use it as payment proof.
-  return { type: payload.type };
+  const headerEventId=request.headers.get("SaturnShift-Event-Id");
+  const headerEventType=request.headers.get("SaturnShift-Event-Type");
+  if(headerEventId&&headerEventId!==String(payload.id||""))throw new SaturnShiftDeliveryError("saturnshift_event_id_header_mismatch",400);
+  if(headerEventType&&headerEventType!==payload.type)throw new SaturnShiftDeliveryError("saturnshift_event_type_header_mismatch",400);
+  return { type: payload.type, payload, bodySha256:await digestHex(body), signatureSha256:await digestHex(header), signatureScheme:"saturnshift-t-v1-hmac-sha256-raw-body-v1" };
 }
 export { hasDeliverySecret, verifySaturnShiftDelivery, SaturnShiftDeliveryError };
