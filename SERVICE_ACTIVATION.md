@@ -51,3 +51,13 @@ Current regression result before release: **153 JavaScript tests and 7 migration
 - Browser check: live product navigation, sample-only labels, plan selection and integration availability rendered correctly.
 - Community reply: `verification-witnesses-2776-299c126` was inserted once into the existing conversation queue. The readback remained `queued`, with no public comment receipt yet. The queued text and pinned test artifact are preserved in `ops/verification-witnesses-2776.sql`. No extra recruitment campaign was started.
 - No live customer purchase, wallet transaction, migration, remote-device action, bounty acceptance or payout was performed.
+
+### 30-day trial and merchant-checkout release — August 29, 2026
+
+- Deployed code commit: `8106acc` on `codex/finish-mag-builds`.
+- Cloudflare Worker version: `62aad6fa-f208-41ad-ad98-2d858d6d2e5f`.
+- Verification: **153 JavaScript tests and 7 Python migration-mail tests passed**; Wrangler production build dry-run passed.
+- Production smoke: **47 checks passed** at `2026-08-29T02:08:12.043Z`; paid intake is ready and the public key is configured.
+- Live readback confirms `trial_days=30`, `tenant_payment_provider_required=false`, and the preselected RMM/PSA form displays the 30-day trial.
+- SaturnShift financial activation remains fail-closed: `configured=false` because the signed endpoint has not been registered and its secret has not been stored. No live hosted payment or entitlement change is claimed.
+- Authenticated SaturnShift dashboard verification: the Developers page exposes the matching live public key and checkout toggles for crypto, card and bank payments. The Developers and Integrations pages do not expose webhook endpoint registration or a signing-secret control; provider support must register `https://mavverick-scout.magai.workers.dev/api/webhooks/saturnshift` or expose the account-specific control before MAG can safely enable fulfillment.
