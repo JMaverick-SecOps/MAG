@@ -10,3 +10,4 @@ Only add or upgrade a capability after reproducible verification or an independe
 | SaturnShift automated fulfillment | blocked | Authenticated support receipt recorded in `SERVICE_ACTIVATION.md` | Enable only after endpoint registration and exact signed-event verification |
 | M365/Google live migration connectors | unverified | Local drafts only | Requires authorized test tenants, vault-backed credentials and end-to-end receipts |
 | 1F916 community participation | bounded | Public/queued receipts in `ops/` | Respect caps; contribution-first, no mass recruitment |
+| Learning-record provenance labels | verified, 2026-08-30 | `test/learning-cycle.test.js`: isolated baseline 5 pass / 3 fail; patched 8 pass / 0 fail | Marks caller assertions and unchecked evidence; does not prove a test ran, bind evidence to a subject, or authorize execution. Independent evidence verification remains unbuilt. |

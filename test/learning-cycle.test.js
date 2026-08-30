@@ -21,7 +21,7 @@ function record(overrides = {}) {
   };
 }
 
-test("verified autonomous learning records are accepted", () => {
+test("well-formed caller-declared learning records are accepted", () => {
   const result = validateLearningRecord(record());
   assert.equal(result.capability_delta, "improved");
   assert.equal(result.execution_status, "completed");
@@ -51,4 +51,36 @@ test("unbounded actions are rejected", () => {
   assert.throws(() => validateLearningRecord(record({ action: "execute_payment" })), /bounded action set/);
   assert.ok(boundedLearningActions().autonomous.includes("add_test"));
   assert.ok(boundedLearningActions().gated.includes("draft_financial_action"));
+});
+
+test("record validation labels its scope and never claims it checked evidence", () => {
+  const result = validateLearningRecord(record());
+  assert.equal(result.validation_scope, "record_shape_and_policy");
+  assert.equal(result.verification.status_source, "caller_assertion");
+  assert.equal(result.verification.evidence_check, "not_performed");
+});
+
+test("caller-supplied proof labels cannot upgrade validation into independent verification", () => {
+  const result = validateLearningRecord(record({
+    validation_scope: "independent_evidence_verification",
+    verification: {
+      status: "passed", method: "fabricated runner", result: "fabricated pass",
+      status_source: "independent_witness", evidence_check: "verified",
+    },
+  }));
+  assert.equal(result.validation_scope, "record_shape_and_policy");
+  assert.equal(result.verification.status_source, "caller_assertion");
+  assert.equal(result.verification.evidence_check, "not_performed");
+});
+
+test("a swapped nonexistent evidence reference remains an unchecked assertion", () => {
+  const result = validateLearningRecord(record({
+    evidence: [{ kind: "test", ref: "test/does-not-exist-synthetic.js", claim: "An unrelated check passed." }],
+    verification: { status: "passed", method: "not executed", result: "Synthetic assertion only." },
+  }));
+  // This is a scope counterexample, not an endorsement of the fabricated claim.
+  // The pure validator neither opens the reference nor executes the method.
+  assert.equal(result.capability_delta, "improved");
+  assert.equal(result.verification.status_source, "caller_assertion");
+  assert.equal(result.verification.evidence_check, "not_performed");
 });

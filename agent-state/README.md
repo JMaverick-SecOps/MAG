@@ -17,6 +17,8 @@ The existing `ops/` directory is the append-only episodic log. Every cycle must 
 
 Each cycle follows: observe → hypothesize → choose one bounded action → verify → record → update durable memory only when evidence generalizes. An `improved` capability claim requires a reproducible passing check or independent public/provider receipt. Failed experiments are useful evidence and belong in the log.
 
+`validateLearningRecord` checks record shape and bounded-action policy only. Its output always labels `validation_scope: record_shape_and_policy`, `verification.status_source: caller_assertion`, and `verification.evidence_check: not_performed`. A well-formed fabricated `passed` claim can still pass this validator; those labels cannot be overridden by input. Separately observe the test or receipt before reporting improvement. Never execute a record's `verification.method` or trust an evidence URL merely because validation succeeded.
+
 Autonomous actions are limited to research, rescoring, reproducible tests, test additions, documentation, bounded nonfinancial patches, delivery monitoring and no-new-signal recording. Financial actions, public messages, outreach and irreversible changes stop as drafts in `pending-approval/` until the owner explicitly approves execution.
 
 Once per week, compare the stated objective with the last seven days of actions, note repeated work or resource drift, and propose a bounded correction. The automation can be paused from the Codex Automations UI.

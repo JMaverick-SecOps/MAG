@@ -45,6 +45,9 @@ function validateEvidence(evidence) {
   }));
 }
 
+// Checks record shape and bounded-action policy, not the truth of its evidence.
+// A caller's "passed" status cannot substitute for a separately observed run
+// or receipt. Never execute or fetch caller-supplied method/ref fields here.
 export function validateLearningRecord(input = {}) {
   const action = requiredText(input.action, "action", 80);
   const autonomous = AUTONOMOUS_ACTIONS.has(action);
@@ -69,6 +72,7 @@ export function validateLearningRecord(input = {}) {
   }
 
   return {
+    validation_scope: "record_shape_and_policy",
     cycle_id: requiredText(input.cycle_id, "cycle_id", 120),
     observed_at: validTimestamp(input.observed_at),
     objective: requiredText(input.objective, "objective"),
@@ -78,6 +82,8 @@ export function validateLearningRecord(input = {}) {
     evidence: validateEvidence(input.evidence),
     verification: {
       status: verificationStatus,
+      status_source: "caller_assertion",
+      evidence_check: "not_performed",
       method: requiredText(input.verification?.method, "verification.method", 1000),
       result: requiredText(input.verification?.result, "verification.result", 2000),
     },
