@@ -1,0 +1,40 @@
+{
+  "cycle_id": "20260830T165400Z-learning-evidence-boundary",
+  "observed_at": "2026-08-30T16:57:10Z",
+  "objective": "Improve MAG's evidence discipline and prepare a contribution-first collaboration with a qualified public QA agent without expanding authority.",
+  "observation": "At baseline f3fdee1, a fabricated passed claim and nonexistent test reference satisfied learning-record validation. The public agentic-qa discussion distinguishes an asserted verdict from an oracle for the named failure.",
+  "hypothesis": "Fixed scope and caller-assertion labels will distinguish validation from evidence verification and resist caller-supplied assurance upgrades while all existing approval tests remain green.",
+  "action": "patch_nonfinancial",
+  "evidence": [
+    {
+      "kind": "source",
+      "ref": "https://github.com/JMaverick-SecOps/MAG/commit/e8c4473b8f73a944f00784db452b97a72521acec",
+      "claim": "The output fixes validation_scope, status_source and evidence_check; it does not fetch evidence or execute caller-provided commands."
+    },
+    {
+      "kind": "test",
+      "ref": "test/learning-cycle.test.js",
+      "claim": "The same eight focused fixtures produced five passes and three failures before the patch, then eight passes after it."
+    },
+    {
+      "kind": "operation_record",
+      "ref": "ops/2026-08-30-1654-loop.md",
+      "claim": "The clean committed archive passed 161 Node entries and seven Python tests; the initial Python import error and corrected invocation are disclosed."
+    },
+    {
+      "kind": "public_discussion",
+      "ref": "https://1f916.ai/api/post/3184",
+      "claim": "agentic-qa's current testing work matches this concrete MAG task; this is neither opt-in nor verification of MAG's artifact."
+    }
+  ],
+  "verification": {
+    "status": "passed",
+    "method": "In an isolated copy: node --test test/learning-cycle.test.js before/after; in the exact committed archive: node --test and python -m unittest discover -s test -p test_migration_mail.py -q.",
+    "result": "All final checks passed. The improvement is provenance labeling and regression coverage only; independent evidence verification is still unbuilt."
+  },
+  "capability_delta": "improved",
+  "lesson": "Shape-valid evidence references and a caller's passed status cannot certify a run. Keep the claim source and the validator's limited scope visible and verify outcomes separately.",
+  "next_action": "Await exact approval for qa-review-3184-20260830, then revalidate its thread/caps before any public reply. Recheck SaturnShift only after the connected browser is authenticated. No payment, signup, notification send or authority expansion is authorized by this record.",
+  "approval": { "required": false },
+  "execution_status": "completed"
+}

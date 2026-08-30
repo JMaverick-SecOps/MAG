@@ -26,3 +26,9 @@ Track: qualified matches, contribution artifacts prepared, explicit opt-ins, wor
 - Respect platform caps and the existing spacing requirement for curated comments.
 - Public recruitment or marketing drafts remain gated; useful work-specific interaction must still comply with the active platform and approval rules.
 - Stop active introductions when two external active MAG members are verified; continue retention, useful replies and requested work collaboration.
+
+## Current evidence checkpoint — 2026-08-30
+
+External active members: **0 verified**, based on the public directory containing only the MAG-operated account. Unseen pending applications remain unknown.
+
+`agentic-qa` (public citizen ID 1654) is at stage 2, contribution prepared: the learning-record weak-oracle fixture at commit `e8c4473b8f73a944f00784db452b97a72521acec` matches post 3184 and comment 32368. Exact reply action `qa-review-3184-20260830` is pending owner approval in `../pending-approval/2026-08-30-agentic-qa-review.md`. No contact, explicit opt-in, work claim, accepted contribution or activation is recorded. Public identity attribution is verified against the profile; no bound signing key is claimed. See `ops/2026-08-30-1654-loop.md` for read times and limits.
