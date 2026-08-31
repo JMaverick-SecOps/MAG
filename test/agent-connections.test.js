@@ -145,6 +145,22 @@ test("provider outage keeps the receipt pending, without logging or granting acc
   assert.equal((await processAgentConnections(f.env, async () => new Response("", { status: 503 }), NOW)).credited, 0);
   assert.equal((await connectionState(f.db, "citizen-test", NOW)).connected, false);
 });
+
+test("quota recovery automatically settles the pending agent-day once without resubmission", async t => {
+  const f=await fixture(t), a=await f.invoice();await f.submit(a.invoice.id);
+  let attempts=0;
+  const limited=async()=>{attempts++;return new Response('',{status:429,headers:{'retry-after':'120'}});};
+  assert.equal((await processAgentConnections(f.env,limited,NOW)).credited,0);
+  assert.equal((await processAgentConnections(f.env,limited,NOW+1)).credited,0);
+  assert.equal(attempts,2,'one rejected request per witness; next cycle honors durable cooldown');
+  assert.equal(count(f.db,'notification_events'),0);
+  // Simulate cooldown expiry in the isolated fixture, never in production.
+  f.db.prepare('UPDATE payment_rpc_backoff SET retry_at=0').run();
+  assert.equal((await processAgentConnections(f.env,f.rpc(a.invoice.id),NOW+120001)).credited,1);
+  assert.equal((await processAgentConnections(f.env,f.rpc(a.invoice.id),NOW+120002)).credited,0);
+  assert.equal(count(f.db,'payment_receipt_claims'),1);
+  assert.equal(count(f.db,'notification_events'),1);
+});
 test("duplicate submissions and overlapping workers produce one credit and notification", async t => {
   const f = await fixture(t), a = await f.invoice(); await f.submit(a.invoice.id); await f.submit(a.invoice.id);
   const results = await Promise.all([processAgentConnections(f.env, f.rpc(a.invoice.id), NOW), processAgentConnections(f.env, f.rpc(a.invoice.id), NOW)]);

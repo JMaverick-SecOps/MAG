@@ -1,4 +1,5 @@
 import { verifyPaymentIntent } from "./payment-intents.js";
+import { createPaymentRpc, collectWitnesses } from './payment-rpc.js';
 const MARKET_BENCHMARKS = Object.freeze([
   { id: "fiverr-website", category: "Website development", observed: "Public listings from $80–$100", source: "https://www.fiverr.com/categories/programming-tech/website-development/" },
   { id: "fiverr-logo", category: "Modern logo design", observed: "Typical $50–$60", source: "https://www.fiverr.com/categories/graphics-design/creative-logo-design/modern" },
@@ -67,7 +68,6 @@ const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const BOUNTY_CATEGORIES = new Set(["automation", "engineering", "research", "sow", "music", "art", "game-development", "operations", "security", "support"]);
 const BASE_USDC = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913";
 const TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
-const BASE_RPCS = ["https://mainnet.base.org", "https://base-rpc.publicnode.com"];
 
 function clean(value, maximum) { return String(value || "").trim().replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, maximum); }
 async function sha256(value) { return [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)))].map((byte) => byte.toString(16).padStart(2, "0")).join(""); }
@@ -185,14 +185,6 @@ async function submitBountyPaymentReceipt(db, id, token, input) {
   return { id, status: "payment_review", payment_status: "pending_verification" };
 }
 
-async function rpc(url, method, params, fetcher) {
-  const response = await fetcher(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }) });
-  if (!response.ok) throw new Error(`Base RPC returned ${response.status}`);
-  const body = await response.json();
-  if (body.error) throw new Error(`Base RPC error ${body.error.code}`);
-  return body.result;
-}
-
 function paidExactly(receipt, treasury, atomic) {
   const recipientTopic = `0x${treasury.toLowerCase().slice(2).padStart(64, "0")}`;
   return (receipt.logs || []).some((log) => log.address?.toLowerCase() === BASE_USDC
@@ -201,9 +193,15 @@ function paidExactly(receipt, treasury, atomic) {
     && BigInt(log.data || "0x0") === BigInt(atomic));
 }
 
-async function verifyBaseUsdcTransfer(txHash, treasury, atomic, fetcher = fetch, minimumConfirmations = 12n) {
+async function verifyBaseUsdcTransfer(txHash, treasury, atomic, fetcher = fetch, minimumConfirmations = 12n, env = {}) {
   if (!HEX_TX.test(String(txHash || "")) || !/^0x[a-fA-F0-9]{40}$/.test(String(treasury || "")) || !/^\d+$/.test(String(atomic || ""))) return { verified: false, reason: "invalid_payment_identity" };
-  const observations = await Promise.all(BASE_RPCS.map(async (url) => ({ receipt: await rpc(url, "eth_getTransactionReceipt", [txHash], fetcher), head: await rpc(url, "eth_blockNumber", [], fetcher) })));
+  const client = createPaymentRpc(env,fetcher);
+  const observations = await collectWitnesses(client, async (_,index) => {
+    const chain=await client.request(index,'eth_chainId');
+    if(chain!=='0x2105')return {receipt:null,wrongChain:true};
+    return {receipt:await client.request(index,'eth_getTransactionReceipt',[txHash]),head:await client.request(index,'eth_blockNumber',[])};
+  });
+  if(observations.some(o=>o.wrongChain))return {verified:false,reason:'wrong_chain'};
   if (observations.some(({ receipt }) => !receipt)) return { verified: false, reason: "receipt_not_found" };
   const [first, second] = observations;
   if (first.receipt.blockHash !== second.receipt.blockHash || observations.some(({ receipt }) => receipt.status !== "0x1")) return { verified: false, reason: "rpc_disagreement_or_failed_transaction" };
@@ -221,7 +219,7 @@ async function processPendingOrders(env, fetcher = fetch) {
   for (const order of pending.results || []) {
     try {
       const intent = order.payment_binding_required ? await env.DB.prepare("SELECT * FROM checkout_payment_intents WHERE purpose_type='service_order' AND purpose_id=?").bind(order.id).first() : null;
-      const payment = order.payment_binding_required ? await verifyPaymentIntent(intent,order.payment_tx_hash,fetcher) : await verifyBaseUsdcTransfer(order.payment_tx_hash, env.TREASURY_WALLET_ADDRESS, order.quoted_atomic, fetcher);
+      const payment = order.payment_binding_required ? await verifyPaymentIntent(intent,order.payment_tx_hash,fetcher,env) : await verifyBaseUsdcTransfer(order.payment_tx_hash, env.TREASURY_WALLET_ADDRESS, order.quoted_atomic, fetcher,12n,env);
       if (!payment.verified) continue;
       const service = serviceById(order.service_id);
       if (!service) throw new Error("verified order references an unsupported service");
@@ -258,13 +256,8 @@ async function processPendingBounties(env, fetcher = fetch) {
   let verified = 0;
   for (const bounty of pending.results || []) {
     try {
-      const observations = await Promise.all(BASE_RPCS.map(async (url) => ({ receipt: await rpc(url, "eth_getTransactionReceipt", [bounty.payment_tx_hash], fetcher), head: await rpc(url, "eth_blockNumber", [], fetcher) })));
-      if (observations.some(({ receipt }) => !receipt)) continue;
-      const [first, second] = observations;
-      if (first.receipt.blockHash !== second.receipt.blockHash || observations.some(({ receipt }) => receipt.status !== "0x1")) continue;
-      const block = BigInt(first.receipt.blockNumber);
-      if (observations.some(({ head }) => BigInt(head) - block < 12n)) continue;
-      if (!observations.every(({ receipt }) => paidExactly(receipt, env.TREASURY_WALLET_ADDRESS, bounty.reward_atomic))) continue;
+      const payment = await verifyBaseUsdcTransfer(bounty.payment_tx_hash,env.TREASURY_WALLET_ADDRESS,bounty.reward_atomic,fetcher,12n,env);
+      if (!payment.verified) continue;
       await env.DB.prepare("UPDATE bounty_requests SET payment_status='verified',status='ready_for_review',updated_at=? WHERE id=? AND payment_status='pending_verification'").bind(Date.now(), bounty.id).run();
       verified += 1;
     } catch (error) { console.warn(JSON.stringify({ event: "bounty_payment_verification_deferred", bounty_id: bounty.id, message: String(error.message || error) })); }

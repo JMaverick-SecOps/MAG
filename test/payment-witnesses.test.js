@@ -15,7 +15,7 @@ async function fixture() {
   function fetcher(mutate=()=>{}) {return async(url,init)=>{
     const state=structuredClone(base);mutate(state,RPCS.indexOf(url));
     const method=JSON.parse(init.body).method;
-    return Response.json({result:method==="eth_getTransactionReceipt"?state.receipt:method==="eth_getTransactionByHash"?state.transaction:state.finalized});
+    return Response.json({result:method==="eth_chainId"?"0x2105":method==="eth_getTransactionReceipt"?state.receipt:method==="eth_getTransactionByHash"?state.transaction:state.finalized});
   };}
   return {intent,fetcher};
 }

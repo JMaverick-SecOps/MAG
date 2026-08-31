@@ -106,7 +106,7 @@ async function processPendingMigrationPayments(env, fetcher = fetch) {
   let verified = 0;
   for (const project of pending.results || []) {
     try {
-      const result = await verifyBaseUsdcTransfer(project.payment_tx_hash, env.TREASURY_WALLET_ADDRESS, project.total_price_atomic, fetcher);
+      const result = await verifyBaseUsdcTransfer(project.payment_tx_hash, env.TREASURY_WALLET_ADDRESS, project.total_price_atomic, fetcher, 12n, env);
       if (!result.verified) continue;
       const now = Date.now();
       await env.DB.batch([

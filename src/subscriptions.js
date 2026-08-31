@@ -91,7 +91,7 @@ async function processSubscriptions(env,fetcher=fetch,now=Date.now()) {
   for (const invoice of rows.results || []) {
     try {
       const intent=await env.DB.prepare("SELECT * FROM checkout_payment_intents WHERE purpose_type='subscription_invoice' AND purpose_id=?").bind(invoice.id).first();
-      const proof=await verifyPaymentIntent(intent,invoice.tx_hash,fetcher);
+      const proof=await verifyPaymentIntent(intent,invoice.tx_hash,fetcher,env);
       if (!proof.verified) continue;
       const start=Math.max(now,Number(invoice.paid_through||0)), end=nextCalendarMonth(start);
       const results=await env.DB.batch([

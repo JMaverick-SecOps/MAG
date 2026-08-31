@@ -1,6 +1,5 @@
+import { RPCS, createPaymentRpc, collectWitnesses } from './payment-rpc.js';
 const USDC = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913";
-// Two separately configured witnesses. Outages must not downgrade this to one.
-const RPCS = ["https://mainnet.base.org", "https://base-rpc.publicnode.com"];
 const TRANSFER = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
 const ADDRESS = /^0x[0-9a-f]{40}$/i;
 const HASH = /^0x[0-9a-f]{64}$/i;
@@ -30,31 +29,18 @@ async function createPaymentIntent(db, purpose, id, treasury, amount, now = Date
   return request;
 }
 
-async function rpc(url, method, params, fetcher) {
-  const response = await fetcher(url, { method: "POST", redirect: "manual", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }), signal: AbortSignal.timeout(15_000) });
-  if (!response.ok) throw new Error("payment RPC unavailable");
-  const reader=response.body?.getReader(), chunks=[]; let size=0;
-  if (!reader) throw new Error("payment RPC response missing");
-  try { while (true) { const part=await reader.read(); if(part.done)break; size+=part.value.byteLength; if(size>1_000_000)throw new Error("payment RPC response too large"); chunks.push(part.value); } }
-  catch(error) { await reader.cancel().catch(()=>{}); throw error; }
-  const bytes=new Uint8Array(size); let offset=0;
-  for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.byteLength;}
-  const text = new TextDecoder().decode(bytes);
-  const payload = JSON.parse(text);
-  if (payload.error) throw new Error("payment RPC rejected request");
-  return payload.result;
-}
-
-async function verifyPaymentIntent(intent, txHash, fetcher = fetch) {
+async function verifyPaymentIntent(intent, txHash, fetcher = fetch, env = {}) {
   if (!intent || !HASH.test(txHash || "")) return { verified: false, reason: "payment_intent_missing" };
-  const observations = await Promise.all(RPCS.map(async url => {
-    const [receipt, transaction, finalized] = await Promise.all([
-      rpc(url, "eth_getTransactionReceipt", [txHash], fetcher),
-      rpc(url, "eth_getTransactionByHash", [txHash], fetcher),
-      rpc(url, "eth_getBlockByNumber", ["finalized", false], fetcher),
-    ]);
+  const client = createPaymentRpc(env, fetcher);
+  const observations = await collectWitnesses(client, async (_, index) => {
+    const chain = await client.request(index, 'eth_chainId');
+    if (chain !== '0x2105') return { receipt:null, transaction:null, finalized:null, wrongChain:true };
+    const receipt = await client.request(index, "eth_getTransactionReceipt", [txHash]);
+    const transaction = await client.request(index, "eth_getTransactionByHash", [txHash]);
+    const finalized = await client.request(index, "eth_getBlockByNumber", ["finalized", false]);
     return { receipt, transaction, finalized };
-  }));
+  });
+  if (observations.some(o=>o.wrongChain)) return {verified:false, reason:'wrong_chain'};
   const recipient = "0x" + intent.treasury_address.slice(2).padStart(64,"0");
   for (const { receipt:r, transaction:t, finalized:f } of observations) {
     if (!r || !t || !f || r.status !== "0x1" || !/^0x[0-9a-f]+$/i.test(f.number || "") || !/^0x[0-9a-f]+$/i.test(r.blockNumber || "")) return { verified:false, reason:"payment_not_finalized" };

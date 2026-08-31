@@ -1,4 +1,4 @@
-import { RPCS, USDC, transferRequest, verifyPaymentIntent } from "./payment-intents.js";
+import { USDC, transferRequest, verifyPaymentIntent } from "./payment-intents.js";
 import { recentHostedRuns } from "./hosted-agent.js";
 
 const DAY = 86400000;
@@ -119,14 +119,7 @@ async function processAgentConnections(env, fetcher = fetch, now = Date.now()) {
   for (const invoice of pending.results || []) {
     try {
       await db.prepare("UPDATE agent_connection_invoices SET last_checked_at=? WHERE id=? AND status='pending_verification'").bind(now, invoice.id).run();
-      const chains = await Promise.all(RPCS.map(async url => {
-        const body = await boundedJson(await fetcher(url, { method: "POST", redirect: "manual",
-          headers: { "content-type": "application/json" }, signal: AbortSignal.timeout(15000),
-          body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_chainId", params: [] }) }));
-        return !body.error && body.result === "0x2105";
-      }));
-      if (!chains.every(Boolean)) continue;
-      const proof = await verifyPaymentIntent(invoice, invoice.tx_hash, fetcher);
+      const proof = await verifyPaymentIntent(invoice, invoice.tx_hash, fetcher, { ...env, DB:db });
       if (!proof.verified) continue;
       // All accounting and the notification are one transaction. A stale receipt,
       // replay or cross-purpose claim rolls everything back, including the credit.

@@ -12,7 +12,7 @@ function rpcFixture(intent,hash=TX,change={}) {
   const tx={hash,blockHash:receipt.blockHash,to:USDC,input:intent.calldata,value:"0x0"};
   return async(url,init)=>{
     const q=JSON.parse(init.body);
-    let result=q.method==="eth_getTransactionReceipt"?receipt:q.method==="eth_getTransactionByHash"?tx:{number:"0x101"};
+    let result=q.method==="eth_chainId"?"0x2105":q.method==="eth_getTransactionReceipt"?receipt:q.method==="eth_getTransactionByHash"?tx:{number:"0x101"};
     if(change[q.method])result=change[q.method](structuredClone(result),url);
     return Response.json({jsonrpc:"2.0",id:1,result});
   };

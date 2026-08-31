@@ -107,7 +107,7 @@ function jsonRpcFetcher({ treasury, amountAtomic }) {
   };
   return async (_url, init) => {
     const { method } = JSON.parse(init.body);
-    const result = method === "eth_getTransactionReceipt" ? receipt : "0x70";
+    const result = method === "eth_chainId" ? "0x2105" : method === "eth_getTransactionReceipt" ? receipt : "0x70";
     return Response.json({ jsonrpc: "2.0", id: 1, result });
   };
 }
