@@ -1,0 +1,362 @@
+{
+  "observed_at": "2026-08-31T03:44:30.000Z",
+  "authorization": "Owner: \"then make it production\"; scoped reviewed release, not payment-test, outreach or treasury authority.",
+  "previous_worker_version": "62aad6fa-f208-41ad-ad98-2d858d6d2e5f",
+  "deployment_id": "b0136212-693a-420e-904d-65b30a8b3eb2",
+  "worker_version": "13b281b6-408a-4886-9c75-c5ed4dbb07eb",
+  "deployed_at": "2026-08-31T03:39:12.371906Z",
+  "traffic_percent": 100,
+  "worker": "mavverick-scout",
+  "account_id": "94130c1b7160b2b7a6f45a15f026bc6d",
+  "database_id": "7a31e839-c552-4584-9f8e-d8b453d929f6",
+  "database": "mavverick-scout-marketplace",
+  "recovery_bookmark_before": "00000220-00000002-000050d8-fc578119e6b34db943590ad7f8fecc3c",
+  "migrations_applied": [
+    "0026_agent_connection_days.sql",
+    "0027_agent_hosted_runs.sql"
+  ],
+  "migration_excluded": "0025_cloud_integrations.sql",
+  "verification": {
+    "node_tests": 186,
+    "python_tests": 7,
+    "worker_build": "passed",
+    "wrangler_types": "generated in isolated candidate",
+    "local_d1": "reviewed migration set applied; rerun reported no pending migrations",
+    "local_worker_http": [
+      {
+        "path": "/health",
+        "status": 200
+      },
+      {
+        "path": "/api/agent-connections",
+        "status": 200
+      },
+      {
+        "path": "/api/agent-connections",
+        "method": "POST",
+        "status": 503
+      }
+    ],
+    "production_smoke": {
+      "checked_at": "2026-08-31T03:42:47.532Z",
+      "origin": "https://mavverick-scout.magai.workers.dev",
+      "checks_passed": 50,
+      "paid_intake_ready": true,
+      "saturnshift_enabled": false,
+      "results": [
+        {
+          "method": "GET",
+          "path": "/health",
+          "status": 200
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "status": 200
+        },
+        {
+          "method": "GET",
+          "path": "/hire",
+          "status": 200
+        },
+        {
+          "method": "GET",
+          "path": "/work",
+          "status": 200
+        },
+        {
+          "method": "GET",
+          "path": "/ops",
+          "status": 200
+        },
+        {
+          "method": "GET",
+          "path": "/ops/console",
+          "status": 200
+        },
+        {
+          "method": "GET",
+          "path": "/ops/screenconnect",
+          "status": 200
+        },
+        {
+          "method": "GET",
+          "path": "/orders/status",
+          "status": 200
+        },
+        {
+          "method": "GET",
+          "path": "/agents",
+          "status": 200
+        },
+        {
+          "method": "GET",
+          "path": "/contribute",
+          "status": 200
+        },
+        {
+          "method": "GET",
+          "path": "/post-bounty",
+          "status": 200
+        },
+        {
+          "method": "GET",
+          "path": "/migrations",
+          "status": 200
+        },
+        {
+          "method": "GET",
+          "path": "/security",
+          "status": 200
+        },
+        {
+          "method": "GET",
+          "path": "/hire?service=website-starter",
+          "status": 200
+        },
+        {
+          "method": "GET",
+          "path": "/api/tasks",
+          "status": 200
+        },
+        {
+          "method": "GET",
+          "path": "/api/services",
+          "status": 200
+        },
+        {
+          "method": "GET",
+          "path": "/api/migrations",
+          "status": 200
+        },
+        {
+          "method": "GET",
+          "path": "/api/managed-ops",
+          "status": 200
+        },
+        {
+          "method": "GET",
+          "path": "/api/managed-ops/screenconnect",
+          "status": 200
+        },
+        {
+          "method": "GET",
+          "path": "/api/security-reviews",
+          "status": 200
+        },
+        {
+          "method": "GET",
+          "path": "/api/payment-providers",
+          "status": 200
+        },
+        {
+          "method": "GET",
+          "path": "/security",
+          "status": 200
+        },
+        {
+          "method": "GET",
+          "path": "/hire?service=static-scan-review",
+          "status": 200
+        },
+        {
+          "method": "GET",
+          "path": "/hire?service=focused-code-review",
+          "status": 200
+        },
+        {
+          "method": "GET",
+          "path": "/hire?service=application-review",
+          "status": 200
+        },
+        {
+          "method": "GET",
+          "path": "/hire?service=architecture-threat-model",
+          "status": 200
+        },
+        {
+          "method": "GET",
+          "path": "/ops",
+          "status": 200
+        },
+        {
+          "method": "GET",
+          "path": "/hire?service=managed-ops-psa&plan=psa-workspace",
+          "status": 200
+        },
+        {
+          "method": "GET",
+          "path": "/hire?service=managed-ops-psa&plan=managed-visibility",
+          "status": 200
+        },
+        {
+          "method": "GET",
+          "path": "/api/agent-connections",
+          "status": 200
+        },
+        {
+          "method": "POST",
+          "path": "/api/agent-connections",
+          "status": 503
+        },
+        {
+          "method": "POST",
+          "path": "/api/agent-connections/signing-payload",
+          "status": 503
+        },
+        {
+          "method": "POST",
+          "path": "/api/webhooks/saturnshift",
+          "status": 503
+        },
+        {
+          "method": "GET",
+          "path": "/api/services",
+          "status": 200
+        },
+        {
+          "method": "GET",
+          "path": "/hire",
+          "status": 200
+        },
+        {
+          "method": "GET",
+          "path": "/hire?service=migration-fabric",
+          "status": 200
+        },
+        {
+          "method": "GET",
+          "path": "/hire?service=static-scan-review",
+          "status": 200
+        },
+        {
+          "method": "GET",
+          "path": "/hire?service=managed-ops-psa",
+          "status": 200
+        },
+        {
+          "method": "GET",
+          "path": "/api/subscriptions/plans",
+          "status": 200
+        },
+        {
+          "method": "GET",
+          "path": "/subscriptions/billing",
+          "status": 401
+        },
+        {
+          "method": "POST",
+          "path": "/api/rmm/poll",
+          "status": 403
+        },
+        {
+          "method": "POST",
+          "path": "/api/rmm/results",
+          "status": 403
+        },
+        {
+          "method": "GET",
+          "path": "/wallet-checkout.js",
+          "status": 200
+        },
+        {
+          "method": "GET",
+          "path": "/admin/config",
+          "status": 401
+        },
+        {
+          "method": "POST",
+          "path": "/orders/status",
+          "status": 404
+        },
+        {
+          "method": "GET",
+          "path": "/mag-logo.png",
+          "status": 200
+        },
+        {
+          "method": "GET",
+          "path": "/mag-logo-light.png",
+          "status": 200
+        },
+        {
+          "method": "GET",
+          "path": "/mag-logo-dark.png",
+          "status": 200
+        },
+        {
+          "method": "GET",
+          "path": "/mag-app-icon.png",
+          "status": 200
+        },
+        {
+          "method": "GET",
+          "path": "/mag-favicon.png",
+          "status": 200
+        }
+      ]
+    }
+  },
+  "readback": {
+    "connection_invoices": 0,
+    "hosted_runs": 0,
+    "notification_events": 0,
+    "notification_duplicate_keys": 0,
+    "d1_rows_written_by_readback": 0,
+    "base_usdc_direct_configured": true,
+    "saturnshift_configured": false,
+    "saturnshift_signed_webhook_configured": false,
+    "agent_connections_enabled": false,
+    "hosted_work_watch_enabled": false
+  },
+  "boundaries": {
+    "live_payment_verified": false,
+    "hosted_production_run_verified": false,
+    "notification_delivery_verified": false,
+    "new_external_activated_members": 0,
+    "public_posts": 0,
+    "treasury_actions": 0
+  },
+  "source_hashes_normalized_lf": [
+    {
+      "path": "src/agent-connections.js",
+      "sha256_lf": "254f56bd0e14d308f1eb4859848171e6e919b40912ab3702c37d45278cdabacc"
+    },
+    {
+      "path": "src/hosted-agent.js",
+      "sha256_lf": "56a697b18bc9108731ae3d3e0c36042fa5c4e38e7e3da89cee8b7c82af7f1306"
+    },
+    {
+      "path": "src/payment-intents.js",
+      "sha256_lf": "47153ab2d5db2eb95050e764dbf287b0bb6450830449e45cf42354e965135cdc"
+    },
+    {
+      "path": "src/worker-entry.js",
+      "sha256_lf": "e266266d5c23790781a9b4268e46d589ecaf337e2bc8c32c7d582b3b6fe7ec1c"
+    },
+    {
+      "path": "migrations/0026_agent_connection_days.sql",
+      "sha256_lf": "dde1aeff615091149ecab0713c41b748510cd9bab58df08f2d0ae5d389a8673a"
+    },
+    {
+      "path": "migrations/0027_agent_hosted_runs.sql",
+      "sha256_lf": "63ec0812b3c002c08d1329849279e346d8dede531f94c563304206d251bd12fd"
+    },
+    {
+      "path": "test/agent-connections.test.js",
+      "sha256_lf": "b9f3fa1e17148b3cf86c4233010d707cc87728b412ad30b3c901a744b92f7fb6"
+    },
+    {
+      "path": "test/hosted-agent.test.js",
+      "sha256_lf": "cf7bb189578067d76dca03d3390bda32a5403c0cd980e591ab4502ab807c44ff"
+    },
+    {
+      "path": "scripts/smoke-production.mjs",
+      "sha256_lf": "202a7c99b9bd1a9fcb953302148651883cf4d15fb1b619957c6e92ce96e60683"
+    },
+    {
+      "path": "wrangler.jsonc",
+      "sha256_lf": "e90ae1e4d02cc33e0ca5fa6d912585e119a3bf63712136c876ee9eb7212624ab"
+    }
+  ]
+}

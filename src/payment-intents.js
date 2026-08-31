@@ -14,7 +14,7 @@ async function digest(text) {
 async function transferRequest(purpose, id, treasury, amount) {
   if (!ADDRESS.test(treasury) || /^0x0{40}$/i.test(treasury)) throw new Error("treasury unavailable");
   if (!/^[1-9][0-9]{0,20}$/.test(String(amount)) || BigInt(amount) > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error("invalid payment amount");
-  if (!["service_order", "subscription_invoice"].includes(purpose) || !/^[0-9a-f-]{36}$/i.test(id)) throw new Error("invalid purchase identity");
+  if (!["service_order", "subscription_invoice", "agent_connection_day"].includes(purpose) || !/^[0-9a-f-]{36}$/i.test(id)) throw new Error("invalid purchase identity");
   const reference = await digest(`mag.payment.v1:${purpose}:${id}`);
   const data = "0xa9059cbb" + treasury.slice(2).toLowerCase().padStart(64, "0") + BigInt(amount).toString(16).padStart(64, "0") + reference;
   return { chainId: "0x2105", to: USDC, value: "0x0", data, reference, amount_atomic: String(amount), treasury_address: treasury.toLowerCase(), asset: "USDC", network: "Base" };

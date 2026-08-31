@@ -35,6 +35,8 @@
     "SCOUT_MODE": "propose_only",
     "MAG_SUBSCRIPTION_PLANS": "psa-workspace,managed-visibility",
     "MAG_RMM_CONTROL_ENABLED": "false",
+    "MAG_AGENT_CONNECTIONS_ENABLED": "false",
+    "MAG_HOSTED_WORK_WATCH_ENABLED": "false",
     "SATURNSHIFT_PUBLIC_KEY": "pk_live_5899b51d9021c4fea2e0413901728c75",
     "SATURNSHIFT_WEBHOOK_ENDPOINT_STATUS": "pending_registration",
     "SATURNSHIFT_FIAT_WEBHOOK_STATUS": "unconfirmed"

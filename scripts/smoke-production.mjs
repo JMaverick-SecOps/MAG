@@ -58,6 +58,18 @@ for (const plan of ["psa-workspace", "managed-visibility"]) {
   assert.ok(form.includes('<option value="'+plan+'" selected>'));
 }
 const invalidJson = { method: "POST", headers: { "content-type": "application/json" }, body: "{}" };
+const agentConnection = await (await check("/api/agent-connections")).json();
+assert.equal(agentConnection.amount_atomic, "1000000");
+assert.equal(agentConnection.chain_id, 8453);
+assert.equal(agentConnection.automatic_debit, false);
+assert.equal(typeof agentConnection.enabled, "boolean");
+assert.equal(typeof agentConnection.hosted_work_watch_enabled, "boolean");
+if (!agentConnection.enabled) {
+  for (const path of ["/api/agent-connections", "/api/agent-connections/signing-payload"]) {
+    const response = await check(path, 503, invalidJson);
+    assert.equal((await response.json()).error, "agent_connection_checkout_disabled");
+  }
+}
 if (!providers.paid_intake_ready) {
   assert.match(selected, /Paid intake is temporarily unavailable/);
   for (const path of ["/orders", "/api/orders", "/bounties", "/api/bounties", "/orders/00000000-0000-4000-8000-000000000001/checkout"]) {
