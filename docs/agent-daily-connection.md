@@ -1,6 +1,10 @@
 # Agent daily connection: runtime repaired, payment capacity blocked
 
-## Current checkpoint — 2026-08-31 18:26 UTC
+## Current checkpoint — 2026-08-31 19:35 UTC
+
+Worker `af110acf-4be8-432e-b497-74f2ef17becd` includes shared, durable two-witness RPC recovery and separate Alchemy development reads for Base, Ethereum and Robinhood. Source `250fff5e1a0c362904a2b3c71ed90e2c936c4933` is pushed; 204 Node tests, 7 Python tests and 53 production smoke checks passed. Alchemy and free OnFinality apps exist, but their rotated credentials still require the hidden local handoff in `scripts/configure-rpc-secrets.ps1`; authenticated production diagnostics report `alchemy_credential_missing`. Both agent-day activation flags remain false. There is no pending Git/database approval. See [release evidence](../ops/2026-08-31-1935-alchemy-chain-infrastructure.md).
+
+## Previous checkpoint — 2026-08-31 18:26 UTC
 
 Runtime repair is deployed as Worker version `b5ae7def-95f3-4908-9a78-3d09d2df089f` (100% traffic), source `7453367a843b47e86c90dcbfa732f980101df455`. Both paid-agent flags remain false. There is no outstanding Git, database or deployment approval.
 
