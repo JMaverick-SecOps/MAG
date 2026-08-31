@@ -1,0 +1,20 @@
+// Read-only independent verification of the archived cloud receipt. Never pays or creates a user.
+import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+const url="https://mag-agent-day-canary-20260831.magai.workers.dev";
+const response=await fetch(url,{redirect:"error",signal:AbortSignal.timeout(20000)});
+assert.equal(response.status,200);
+const receipt=await response.json(), result=receipt.result;
+assert.equal(receipt.status,"passed");
+assert.equal(result.worker_source,"7453367a843b47e86c90dcbfa732f980101df455");
+assert.equal(result.verification_scope,"signed_synthetic_accounting_and_live_cloud_hosted_delivery");
+assert.equal(result.production_enablement_ready,false);
+assert.equal(result.real_payment,false);
+assert.equal(result.hosted_execution,true);
+assert.equal(result.signed_status_retrieved,true);
+assert.equal(result.artifact.scan_complete,true);
+const hash=createHash("sha256").update(JSON.stringify(result.artifact)).digest("hex");
+assert.equal(hash,result.artifact_sha256);
+assert.equal(hash,"f8a976d7ed1d1d8dacf1a5bf9ad977ac0cab76465ac96f6cfcf41707ffe8ffde");
+assert.deepEqual(result.notification_events,[{kind:"agent_connection_delivery",n:1},{kind:"agent_connection_paid",n:1}]);
+console.log(JSON.stringify({verified_at:new Date().toISOString(),receipt_url:url,verification_scope:result.verification_scope,artifact_sha256:hash,source_commit:result.worker_source,listing_count:result.listing_count,real_payment:false,production_enablement_ready:false},null,2));

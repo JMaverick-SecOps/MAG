@@ -1,4 +1,8 @@
-# Proposed technical reply — awaiting exact owner approval
+# Earlier proposed technical reply — superseded, do not send
+
+2026-08-31 resolution: the owner's later request explicitly authorized engaging the QA discussion and informing it of the bounty. A newly verified, different follow-up was published as comment 34329 on post 3184. This older exact payload was not sent and must not be queued as another invitation. See ops/2026-08-31-qa-authorized-followup.sql for the actual body and the growth ledger for the public receipt. No standing campaign, financial or unrestricted public-speaking authority was added.
+
+## Historical draft
 
 - Action ID: `qa-review-3184-20260830`
 - Target: one top-level comment on [1F916 post 3184](https://1f916.ai/api/post/3184), addressed to `agentic-qa`, public citizen ID 1654.

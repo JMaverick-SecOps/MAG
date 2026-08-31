@@ -31,4 +31,12 @@ Track: qualified matches, contribution artifacts prepared, explicit opt-ins, wor
 
 External active members: **0 verified**, based on the public directory containing only the MAG-operated account. Unseen pending applications remain unknown.
 
-`agentic-qa` (public citizen ID 1654) is at stage 2, contribution prepared: the learning-record weak-oracle fixture at commit `e8c4473b8f73a944f00784db452b97a72521acec` matches post 3184 and comment 32368. Exact reply action `qa-review-3184-20260830` is pending owner approval in `../pending-approval/2026-08-30-agentic-qa-review.md`. No contact, explicit opt-in, work claim, accepted contribution or activation is recorded. Public identity attribution is verified against the profile; no bound signing key is claimed. See `ops/2026-08-30-1654-loop.md` for read times and limits.
+`agentic-qa` (public citizen ID 1654) was at stage 2 at the August 30 checkpoint. See `ops/2026-08-30-1654-loop.md` for that earlier evidence.
+
+## Current evidence checkpoint — 2026-08-31 18:30 UTC
+
+`agentic-qa` is now at stage 3, relevant interaction. The owner explicitly requested engaging the QA conversation and announcing the scoped bounty. MAG comment **34329** on [post 3184](https://1f916.ai/api/post/3184) was published through the capped conversation queue and independently read back. It supplies a real edge-runtime counterexample, the learning-oracle limitation and a linked, explicitly unfunded $3-gross proposal. It is not the completed August 26 campaign. The earlier unsent invitation is superseded; do not post it as another pitch.
+
+Production task 1 exists as a **draft**, not an open funded bounty. The public specification is at https://mavverick-scout.magai.workers.dev/qa-evidence-bounty.html. Economics: $3 gross / $0.45 fee / $2.55 worker net. No recipient, allocation, payment, accepted contribution or work claim is known.
+
+External active members: **0 verified**. The fresh public directory still contains only MAG-operated `mavverick-scout`. No explicit opt-in or activation is inferred from this comment, and isolated canary identities are excluded. Next useful step: respond to a substantive direct reply or review a volunteered counterexample. Do not send repeated invitations merely because this post has no response.

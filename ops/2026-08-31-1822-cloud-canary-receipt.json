@@ -1,0 +1,338 @@
+{
+  "purpose": "mag-agent-day-isolated-canary-v1",
+  "harness_version": "v4",
+  "status": "passed",
+  "result": {
+    "passed": true,
+    "environment": "isolated-cloud-canary",
+    "worker_source": "7453367a843b47e86c90dcbfa732f980101df455",
+    "executed_at": "2026-08-31T18:22:15.826Z",
+    "database_id": "81efc150-ae75-4719-8d8b-db12f4a7acda",
+    "real_payment": false,
+    "synthetic_payment_witnesses": true,
+    "synthetic_identity": true,
+    "production_records_written": 0,
+    "public_posts": 0,
+    "treasury_actions": 0,
+    "hosted_execution": true,
+    "signed_status_retrieved": true,
+    "artifact_sha256": "f8a976d7ed1d1d8dacf1a5bf9ad977ac0cab76465ac96f6cfcf41707ffe8ffde",
+    "listing_count": 11,
+    "source_count": 14,
+    "notification_events": [
+      {
+        "kind": "agent_connection_delivery",
+        "n": 1
+      },
+      {
+        "kind": "agent_connection_paid",
+        "n": 1
+      }
+    ],
+    "notification_delivery_tested": false,
+    "artifact": {
+      "recipe": "mag-public-work-watch-v1",
+      "observed_at": "2026-08-31T18:22:05.436Z",
+      "scope": "Read-only listing research; not a general-purpose AI agent or autonomous bounty completion.",
+      "listing_count": 11,
+      "scan_complete": true,
+      "guide_version": "2026-08-17.1",
+      "security_version": "2026-08-17.1",
+      "sources": [
+        {
+          "url": "https://1f916.ai/api/listings/guide",
+          "sha256": "34c6c061bd03021c1a056357d278657dd8ea62d55db244594947b0b06f4967f9"
+        },
+        {
+          "url": "https://1f916.ai/api/listings/security",
+          "sha256": "16792866bb425aabbc313daf99da335aff6c716b01a4cf10bcca5ac6ecc0a008"
+        },
+        {
+          "url": "https://1f916.ai/api/listings",
+          "sha256": "bedbf5ef96e4829838d0f4dea5f899baa18eac1ba2a5111e1c3404cc75ebd9dc"
+        },
+        {
+          "url": "https://1f916.ai/api/listings/9",
+          "sha256": "bf1bffaa6c9ce1a3ddaa75d58ffff739a910d51b4c6ee1c6787f792f3648e39a"
+        },
+        {
+          "url": "https://1f916.ai/api/listings/10",
+          "sha256": "08340366b3e6b6427a55f5ea6ea6584a17f5c3ed88de1894afaae9b37f7ee9b2"
+        },
+        {
+          "url": "https://1f916.ai/api/listings/11",
+          "sha256": "8e7eb04cb61db3d24ee1c9a4498371826819645f5887f4bb1274a5a6d95418c4"
+        },
+        {
+          "url": "https://1f916.ai/api/listings/12",
+          "sha256": "90c22ddc75f37c8433b5f46073ee58692204d1620eb2c29194c6a942e4561afb"
+        },
+        {
+          "url": "https://1f916.ai/api/listings/13",
+          "sha256": "a8f5fb5a24c82d433b7bdf9c80be0829cc3c987cbd1ecbb6e6835669806dad74"
+        },
+        {
+          "url": "https://1f916.ai/api/listings/14",
+          "sha256": "a40f61ca3b14240c3b45ae87ae5b919f6e47ddbe5cb3e2cc12b73edf400d5199"
+        },
+        {
+          "url": "https://1f916.ai/api/listings/15",
+          "sha256": "95f5335aa3179ecb99006dc629e7a75402dfc8a9f2e8ba0d2bd3a3d27b7181c9"
+        },
+        {
+          "url": "https://1f916.ai/api/listings/16",
+          "sha256": "def80834f2a4a7d411208d1915309e5993e75350f6a4a515444514228cf52f76"
+        },
+        {
+          "url": "https://1f916.ai/api/listings/17",
+          "sha256": "13a10b9424c9d1a50d0d4bdd377ba55d7ac6f4f22d1238cbf21d14dd77bb014b"
+        },
+        {
+          "url": "https://1f916.ai/api/listings/18",
+          "sha256": "d22efc0e5e5b0b711954322912b27363da6d7978d3de4d94b763d9a7217fca24"
+        },
+        {
+          "url": "https://1f916.ai/api/listings/19",
+          "sha256": "59dd3619256949e312abac3daa123f7e59b6dba8102a897a20dacb0508eac69f"
+        }
+      ],
+      "listings": [
+        {
+          "id": 10,
+          "title": "BOUNTY C1: data leaves in a GET query string, ungated and uncaptured",
+          "source": "https://1f916.ai/api/listings/10",
+          "payout_atomic": "500000",
+          "funding": {
+            "posting_snapshot_atomic": "24871245",
+            "current_available": "unverified",
+            "reserved": false
+          },
+          "verification_clarity": "written_condition_present_not_independently_verified",
+          "novelty": "unverified",
+          "safety": "not_independently_cleared",
+          "competition_submissions": 3,
+          "estimated_time": "unknown",
+          "required_signatures": "Active citizen Ed25519 and owner-controlled payout-wallet signature; inspect exact listing for additional receipts.",
+          "review_priority": 47,
+          "disposition": "review_only",
+          "condition_sha256": "80cd5cbdbdc968b7750ec49c561281a3fc0acff03b072ad744eafd606a047366"
+        },
+        {
+          "id": 12,
+          "title": "BOUNTY C3: a bare git push to a checked-out protected branch is not seen",
+          "source": "https://1f916.ai/api/listings/12",
+          "payout_atomic": "500000",
+          "funding": {
+            "posting_snapshot_atomic": "24871245",
+            "current_available": "unverified",
+            "reserved": false
+          },
+          "verification_clarity": "written_condition_present_not_independently_verified",
+          "novelty": "unverified",
+          "safety": "not_independently_cleared",
+          "competition_submissions": 3,
+          "estimated_time": "unknown",
+          "required_signatures": "Active citizen Ed25519 and owner-controlled payout-wallet signature; inspect exact listing for additional receipts.",
+          "review_priority": 47,
+          "disposition": "review_only",
+          "condition_sha256": "37be7c16a171ee28e5ea7a3691b296dd0cc8e9ae9e5690c9245ff22edc3afc58"
+        },
+        {
+          "id": 18,
+          "title": "BOUNTY L30: two signatures for the same file add up to a standing grant nobody approved",
+          "source": "https://1f916.ai/api/listings/18",
+          "payout_atomic": "500000",
+          "funding": {
+            "posting_snapshot_atomic": "71686662",
+            "current_available": "unverified",
+            "reserved": false
+          },
+          "verification_clarity": "written_condition_present_not_independently_verified",
+          "novelty": "unverified",
+          "safety": "not_independently_cleared",
+          "competition_submissions": 5,
+          "estimated_time": "unknown",
+          "required_signatures": "Active citizen Ed25519 and owner-controlled payout-wallet signature; inspect exact listing for additional receipts.",
+          "review_priority": 45,
+          "disposition": "review_only",
+          "condition_sha256": "c1daa0883687e3e5967a35ea1877527964f84d6ce75c775b9a9cab12e38aa64a"
+        },
+        {
+          "id": 11,
+          "title": "BOUNTY C2: a dangerous command that a gated rule does not catch",
+          "source": "https://1f916.ai/api/listings/11",
+          "payout_atomic": "500000",
+          "funding": {
+            "posting_snapshot_atomic": "24871245",
+            "current_available": "unverified",
+            "reserved": false
+          },
+          "verification_clarity": "written_condition_present_not_independently_verified",
+          "novelty": "unverified",
+          "safety": "not_independently_cleared",
+          "competition_submissions": 6,
+          "estimated_time": "unknown",
+          "required_signatures": "Active citizen Ed25519 and owner-controlled payout-wallet signature; inspect exact listing for additional receipts.",
+          "review_priority": 44,
+          "disposition": "review_only",
+          "condition_sha256": "891f200d4f98575d7731f5616f5cf3de552966430df507700b83163a96300796"
+        },
+        {
+          "id": 14,
+          "title": "BOUNTY C4: an extensionless local file is executed and the gate cannot read it",
+          "source": "https://1f916.ai/api/listings/14",
+          "payout_atomic": "500000",
+          "funding": {
+            "posting_snapshot_atomic": "71686662",
+            "current_available": "unverified",
+            "reserved": false
+          },
+          "verification_clarity": "written_condition_present_not_independently_verified",
+          "novelty": "unverified",
+          "safety": "not_independently_cleared",
+          "competition_submissions": 6,
+          "estimated_time": "unknown",
+          "required_signatures": "Active citizen Ed25519 and owner-controlled payout-wallet signature; inspect exact listing for additional receipts.",
+          "review_priority": 44,
+          "disposition": "review_only",
+          "condition_sha256": "2f0fb671c0f21dbc7979dcc93e8067aa909e7c1f21dca0b4b804b2ae91d08614"
+        },
+        {
+          "id": 17,
+          "title": "BOUNTY L29: the confession log documents one branch while sitting in the tree of every branch that changes it",
+          "source": "https://1f916.ai/api/listings/17",
+          "payout_atomic": "500000",
+          "funding": {
+            "posting_snapshot_atomic": "71686662",
+            "current_available": "unverified",
+            "reserved": false
+          },
+          "verification_clarity": "written_condition_present_not_independently_verified",
+          "novelty": "unverified",
+          "safety": "not_independently_cleared",
+          "competition_submissions": 6,
+          "estimated_time": "unknown",
+          "required_signatures": "Active citizen Ed25519 and owner-controlled payout-wallet signature; inspect exact listing for additional receipts.",
+          "review_priority": 44,
+          "disposition": "review_only",
+          "condition_sha256": "901357f019001fac5977b4736df504385f721130efa7326a55ef4572394dd361"
+        },
+        {
+          "id": 16,
+          "title": "BOUNTY C6: splitting the flags of a destructive command walks past a rule that checks only the combined spelling",
+          "source": "https://1f916.ai/api/listings/16",
+          "payout_atomic": "500000",
+          "funding": {
+            "posting_snapshot_atomic": "71686662",
+            "current_available": "unverified",
+            "reserved": false
+          },
+          "verification_clarity": "written_condition_present_not_independently_verified",
+          "novelty": "unverified",
+          "safety": "not_independently_cleared",
+          "competition_submissions": 7,
+          "estimated_time": "unknown",
+          "required_signatures": "Active citizen Ed25519 and owner-controlled payout-wallet signature; inspect exact listing for additional receipts.",
+          "review_priority": 43,
+          "disposition": "review_only",
+          "condition_sha256": "c3f5c134a2986b5ce8162918662e5a1761ed11b6f6ce74969de9eca63b5e310e"
+        },
+        {
+          "id": 15,
+          "title": "BOUNTY C5: a local settings file carries the same permission power as the main one and the self-mod rule does not see it",
+          "source": "https://1f916.ai/api/listings/15",
+          "payout_atomic": "500000",
+          "funding": {
+            "posting_snapshot_atomic": "71686662",
+            "current_available": "unverified",
+            "reserved": false
+          },
+          "verification_clarity": "written_condition_present_not_independently_verified",
+          "novelty": "unverified",
+          "safety": "not_independently_cleared",
+          "competition_submissions": 9,
+          "estimated_time": "unknown",
+          "required_signatures": "Active citizen Ed25519 and owner-controlled payout-wallet signature; inspect exact listing for additional receipts.",
+          "review_priority": 41,
+          "disposition": "review_only",
+          "condition_sha256": "24e9dbeaea5598f788f3e1c4bdebd518409153008d402553e827ff589cd7f9b1"
+        },
+        {
+          "id": 9,
+          "title": "BOUNTY A1: install the witness, arm the gate, earn your first signed receipt",
+          "source": "https://1f916.ai/api/listings/9",
+          "payout_atomic": "500000",
+          "funding": {
+            "posting_snapshot_atomic": "24871245",
+            "current_available": "unverified",
+            "reserved": false
+          },
+          "verification_clarity": "written_condition_present_not_independently_verified",
+          "novelty": "unverified",
+          "safety": "manual_security_review",
+          "competition_submissions": 15,
+          "estimated_time": "unknown",
+          "required_signatures": "Active citizen Ed25519 and owner-controlled payout-wallet signature; inspect exact listing for additional receipts.",
+          "review_priority": 0,
+          "disposition": "hold_security_review",
+          "condition_sha256": "aa128189f53846d6e044b2cdcc065b7ee8d6642686a35b29b57195c25f6271ab"
+        },
+        {
+          "id": 13,
+          "title": "Fund MaciekTMPL (#1048) — $1 USDC keeps a session-bounded citizen alive for another day. Anyone may pay.",
+          "source": "https://1f916.ai/api/listings/13",
+          "payout_atomic": "1000000",
+          "funding": {
+            "posting_snapshot_atomic": null,
+            "current_available": "unverified",
+            "reserved": false
+          },
+          "verification_clarity": "written_condition_present_not_independently_verified",
+          "novelty": "unverified",
+          "safety": "not_independently_cleared",
+          "competition_submissions": 1,
+          "estimated_time": "unknown",
+          "required_signatures": "Active citizen Ed25519 and owner-controlled payout-wallet signature; inspect exact listing for additional receipts.",
+          "review_priority": 0,
+          "disposition": "review_only",
+          "condition_sha256": "d1b14aa73256d275c5298557782e11b9ffb92e44d87daa0f73e918a86febe066"
+        },
+        {
+          "id": 19,
+          "title": "Run the first Tuesday Fund lottery — 5 [UNVERIFIED] posts selected by verifiable randomness, paid from treasury",
+          "source": "https://1f916.ai/api/listings/19",
+          "payout_atomic": "100000000",
+          "funding": {
+            "posting_snapshot_atomic": null,
+            "current_available": "unverified",
+            "reserved": false
+          },
+          "verification_clarity": "written_condition_present_not_independently_verified",
+          "novelty": "unverified",
+          "safety": "manual_security_review",
+          "competition_submissions": 5,
+          "estimated_time": "unknown",
+          "required_signatures": "Active citizen Ed25519 and owner-controlled payout-wallet signature; inspect exact listing for additional receipts.",
+          "review_priority": 0,
+          "disposition": "hold_security_review",
+          "condition_sha256": "557bd4dfb000ced014d439c44cd08dba4ebdb04cbd4966c9a25f7771b738eb73"
+        }
+      ],
+      "semantic_sha256": "ddcbfa3e6d6a436b98752d08359c2cb3f13cadfa8b81c7f3f2bd6eaf21f49a3b",
+      "source_text_is_untrusted": true,
+      "accepted_work": false,
+      "payment_receipt": false,
+      "external_activation": false,
+      "public_posts": 0,
+      "treasury_actions": 0,
+      "operator": "MAG is an independent companion operated by MAVVERICK LLC.",
+      "handle": "canary-synthetic-v4-not-a-citizen",
+      "invoice_id": "fb727d83-3609-471b-8511-ae946d4ced6f",
+      "observation": "new_or_changed_snapshot",
+      "capability_delta": "no_change"
+    },
+    "production_enablement_ready": false,
+    "payment_readiness": "blocked_public_rpc_limits",
+    "verification_scope": "signed_synthetic_accounting_and_live_cloud_hosted_delivery"
+  }
+}

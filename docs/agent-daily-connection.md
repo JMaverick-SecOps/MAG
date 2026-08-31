@@ -1,4 +1,20 @@
-# Agent daily connection: guarded production release
+# Agent daily connection: runtime repaired, payment capacity blocked
+
+## Current checkpoint — 2026-08-31 18:26 UTC
+
+Runtime repair is deployed as Worker version `b5ae7def-95f3-4908-9a78-3d09d2df089f` (100% traffic), source `7453367a843b47e86c90dcbfa732f980101df455`. Both paid-agent flags remain false. There is no outstanding Git, database or deployment approval.
+
+An actual Cloudflare canary found that this runtime rejects `redirect: "error"` before network I/O. The scan, identity-key lookup and payment-witness requests now use `manual` and still reject non-OK/redirect responses. Four added regression tests failed before this patch and pass afterward; the full suite passed 190 Node and 7 Python tests, plus 50 production smoke checks.
+
+The scheduled isolated-cloud test completed signed synthetic accounting, a live scan of 11 listings / 14 source documents, signed artifact retrieval, hash verification, replay rejection, forged-signature rejection and exactly one payment event plus one delivery event. [Read-only receipt](https://mag-agent-day-canary-20260831.magai.workers.dev); independent verifier: `node scripts/verify-agent-canary.mjs`. Its settlement and identity are explicitly synthetic, no production invoice was created, and notification-provider delivery was not tested. The canary cron is retired; retained evidence cannot execute new work.
+
+The remaining activation blocker is live RPC capacity from Cloudflare: Base's shared public endpoint returned HTTP 429; dRPC's public endpoint also returned 429; 1RPC returned HTTP 200 with JSON-RPC usage-limit error -32001. PublicNode responded with the correct chain ID, but one witness is insufficient. The failed replacement was not adopted. Do not retry unchanged limits, rotate identities to evade quotas, or enable intake using only the healthy witness.
+
+Next proof requires an authorized Base RPC service with adequate capacity, two valid read-only chain/finality/receipt observations from the actual Worker, and a verified configuration rollout. Account-specific credentials must use a secure secret path, never chat or committed source. No real charge is authorized as a test. Paid activation remains `no_change` despite the verified hosted-execution improvement.
+
+The generic `paid_intake_ready` field is a configuration indicator, not live witness health or settlement evidence; other direct-USDC paths may share the same unavailable public witness. SaturnShift remains a separate unverified merchant webhook integration.
+
+## Earlier guarded release (retained context)
 
 Deployed on 2026-08-31 at 03:39 UTC as Worker version `13b281b6-408a-4886-9c75-c5ed4dbb07eb` (100% traffic). Production migrations 0026 and 0027 are applied. The public manifest is live; both new activation flags are explicitly false. This release does not establish a real payment or hosted production run. See `../ops/2026-08-31-0339-production-release.md` for the receipt and verification boundaries.
 

@@ -1,0 +1,37 @@
+{
+  "cycle_id": "20260831T182200Z-edge-agent-delivery",
+  "observed_at": "2026-08-31T18:26:00.000Z",
+  "objective": "Increase verified MAG delivery capability and advance one qualified QA contribution without changing payment or identity controls.",
+  "observation": "Node mocks passed while Cloudflare rejected redirect:error before network IO. Real RPC preflight then returned quota failures. The isolated scheduled canary subsequently produced a live public-source artifact through signed retrieval using explicitly synthetic settlement.",
+  "hypothesis": "Using Workers-supported manual redirects while rejecting non-OK responses will make the real hosted scan execute without following redirects; planted redirect responses and forged signatures must still be rejected.",
+  "action": "reproduce_test",
+  "evidence": [
+    {
+      "kind": "test",
+      "ref": "test/agent-edge-redirects.test.js",
+      "claim": "Four tests failed before the redirect patch and pass after it; full suite 190 Node and 7 Python passes."
+    },
+    {
+      "kind": "cloud_receipt",
+      "ref": "https://mag-agent-day-canary-20260831.magai.workers.dev",
+      "claim": "Signed synthetic accounting and actual hosted delivery passed; independent SHA-256 readback verified; not real payment or paid-intake readiness."
+    },
+    {
+      "kind": "public_comment",
+      "ref": "https://1f916.ai/api/post/3184",
+      "claim": "Comment 34329 by mavverick-scout independently read back. Relevant interaction only; no opt-in or activation."
+    }
+  ],
+  "verification": {
+    "status": "passed",
+    "method": "node --test; python -m unittest discover -s test -p test_*.py; node scripts/verify-agent-canary.mjs; node scripts/smoke-production.mjs",
+    "result": "190 Node, 7 Python, 50 production smoke checks. Cloud artifact f8a976d7ed1d1d8dacf1a5bf9ad977ac0cab76465ac96f6cfcf41707ffe8ffde verified independently at 18:25:56Z."
+  },
+  "capability_delta": "improved",
+  "lesson": "A mock accepting a request option is not evidence that the deployed runtime supports it. Separate signed accounting, actual hosted delivery, provider payment readiness, and notification delivery into independently observed claims.",
+  "next_action": "Preserve two-witness settlement and disabled intake until provider capacity changes. Do not retry unchanged quota failures or repost the QA invitation. Watch for a useful direct reply; verify explicit opt-in plus work before counting activation.",
+  "approval": {
+    "required": false
+  },
+  "execution_status": "completed"
+}

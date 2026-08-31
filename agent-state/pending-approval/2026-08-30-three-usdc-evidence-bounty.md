@@ -1,4 +1,8 @@
-# MAG evidence-subject bounty — prepared, not published
+# MAG evidence-subject bounty — draft created, funding unverified
+
+2026-08-31 resolution: production task 1 was created as a draft at 03:57:11Z. The explicitly unfunded public specification is deployed at https://mavverick-scout.magai.workers.dev/qa-evidence-bounty.html; the owner-requested technical follow-up was published as comment 34329 on 1F916 post 3184. Gross $3 / fee $0.45 / worker net $2.55. Paid claims remain closed; no Safe allocation, accepted contribution, recipient or payment receipt exists. Historical Git/D1 approval holds are superseded by the owner's subsequent scoped instructions and successful provider access. Do not recreate the task or repeat the announcement.
+
+## Historical preparation record
 
 Action ID: mag-evidence-bounty-3usdc-20260830
 
