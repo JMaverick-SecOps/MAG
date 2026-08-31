@@ -1,5 +1,7 @@
 const USDC = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913";
-const RPCS = ["https://mainnet.base.org", "https://base-rpc.publicnode.com"];
+// Two separate providers; Base's shared development RPC returned 429 at the edge.
+// Unavailability still fails closed: never downgrade to a single witness.
+const RPCS = ["https://base.drpc.org", "https://base-rpc.publicnode.com"];
 const TRANSFER = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
 const ADDRESS = /^0x[0-9a-f]{40}$/i;
 const HASH = /^0x[0-9a-f]{64}$/i;
