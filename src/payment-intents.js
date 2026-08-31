@@ -30,7 +30,7 @@ async function createPaymentIntent(db, purpose, id, treasury, amount, now = Date
 }
 
 async function rpc(url, method, params, fetcher) {
-  const response = await fetcher(url, { method: "POST", redirect: "error", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }), signal: AbortSignal.timeout(15_000) });
+  const response = await fetcher(url, { method: "POST", redirect: "manual", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }), signal: AbortSignal.timeout(15_000) });
   if (!response.ok) throw new Error("payment RPC unavailable");
   const reader=response.body?.getReader(), chunks=[]; let size=0;
   if (!reader) throw new Error("payment RPC response missing");

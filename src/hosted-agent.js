@@ -12,7 +12,8 @@ async function sha256(text) {
 }
 async function readSource(path, fetcher) {
  const url=ORIGIN+path;
- const response=await fetcher(url,{method:"GET",redirect:"error",headers:{accept:"application/json"},signal:AbortSignal.timeout(10000)});
+ // Workers reject redirect:"error"; manual plus the ok check below still refuses all redirects.
+ const response=await fetcher(url,{method:"GET",redirect:"manual",headers:{accept:"application/json"},signal:AbortSignal.timeout(10000)});
  if(!response.ok || !response.body) throw new Error("public_source_unavailable");
  const reader=response.body.getReader(), chunks=[]; let length=0;
  try { for(;;){ const {value,done}=await reader.read();if(done)break; length+=value.length;if(length>131072)throw new Error("public_source_too_large");chunks.push(value); } }

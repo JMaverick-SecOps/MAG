@@ -1,0 +1,13 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { TestD1 } from "./helpers/d1.js";
+import { scanPublicWork } from "../src/hosted-agent.js";
+import { signingPayload, operateConnection, processAgentConnections } from "../src/agent-connections.js";
+import { verifyPaymentIntent, transferRequest } from "../src/payment-intents.js";
+const wallet="0x"+"a".repeat(40), tx="0x"+"b".repeat(64);
+function fixture(t){const db=new TestD1();t.after(()=>db.close());const now=Date.now();db.prepare("INSERT INTO guild_applications(id,handle,status,registry_verified_at,created_at,updated_at) VALUES(?,'edge-test','active',?,?,?)").bind(crypto.randomUUID(),now,now,now).run();return {db,env:{DB:db,TREASURY_WALLET_ADDRESS:wallet,MAG_AGENT_CONNECTIONS_ENABLED:"true",MAG_HOSTED_WORK_WATCH_ENABLED:"true"}};}
+function redirect(url,init){assert.equal(init.redirect,"manual","Cloudflare-safe mode must not follow redirects");return Promise.resolve(new Response("",{status:302,headers:{location:"https://untrusted.invalid"}}));}
+test("edge public scan uses supported redirect mode and rejects redirects",async()=>{await assert.rejects(()=>scanPublicWork(redirect),/public_source_unavailable/);});
+test("edge citizen-key lookup rejects redirects without opening an invoice",async t=>{const f=fixture(t),payload=await signingPayload(f.env,{action:"invoice",handle:"edge-test",invoice_id:crypto.randomUUID()});await assert.rejects(()=>operateConnection(f.env,{...payload,signature:"invalid"},redirect),/upstream unavailable/);assert.equal(f.db.prepare("SELECT COUNT(*) n FROM agent_connection_invoices").first().n,0);});
+test("edge finality witnesses reject redirects and use supported mode",async()=>{const p=await transferRequest("agent_connection_day",crypto.randomUUID(),wallet,"1000000");await assert.rejects(()=>verifyPaymentIntent({calldata:p.data,treasury_address:wallet,amount_atomic:"1000000"},tx,redirect),/payment RPC unavailable/);});
+test("edge chain witnesses use supported mode without granting redirected payment",async t=>{const f=fixture(t),id=crypto.randomUUID();f.db.prepare("INSERT INTO agent_connection_invoices(id,handle,amount_atomic,treasury_address,calldata,status,tx_hash,created_at) VALUES(?,'edge-test','1000000',?,'fixture','pending_verification',?,?)").bind(id,wallet,tx,Date.now()).run();const modes=[];const result=await processAgentConnections(f.env,async(url,init)=>{modes.push(init.redirect);return new Response("",{status:302,headers:{location:"https://untrusted.invalid"}});});assert.equal(result.credited,0);assert.deepEqual(modes,["manual","manual"]);assert.equal(f.db.prepare("SELECT COUNT(*) n FROM payment_receipt_claims").first().n,0);});

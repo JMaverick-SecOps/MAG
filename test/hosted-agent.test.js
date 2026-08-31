@@ -7,7 +7,7 @@ const row={id:17,title:"Documentation subject binding",amount_atomic:"500000",fu
 function sources(mutate=()=>{}){
  const calls=[];
  const fetcher=async (url,init)=>{
-  calls.push(url);assert.equal(init.method,"GET");assert.equal(init.redirect,"error");assert.ok(init.signal);
+  calls.push(url);assert.equal(init.method,"GET");assert.equal(init.redirect,"manual");assert.ok(init.signal);
   const path=new URL(url).pathname;assert.equal(new URL(url).origin,"https://1f916.ai");
   let value=path.endsWith("/guide")||path.endsWith("/security")?{rules_version:"2026-08-17.1"}:path==="/api/listings"?{listings:[{...row}],has_more:false}:{listing:{id:17,condition:"Document and test the exact named revision and reject any mismatched checkout."}};
   const changed=mutate(value,path);

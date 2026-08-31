@@ -70,7 +70,7 @@ async function signingPayload(env, input, now = Date.now()) {
 }
 async function authorize(context, signature, fetcher) {
   const payload = await boundedJson(await fetcher("https://1f916.ai/api/keys/" + encodeURIComponent(context.data.handle),
-    { headers: { accept: "application/json" }, redirect: "error", signal: AbortSignal.timeout(15000) }));
+    { headers: { accept: "application/json" }, redirect: "manual", signal: AbortSignal.timeout(15000) }));
   const bytes = decode(signature, 64), message = new TextEncoder().encode(context.preimage);
   for (const entry of (Array.isArray(payload.keys) ? payload.keys : []).slice(0, 32)) {
     if (entry.status !== "active") continue;
@@ -120,7 +120,7 @@ async function processAgentConnections(env, fetcher = fetch, now = Date.now()) {
     try {
       await db.prepare("UPDATE agent_connection_invoices SET last_checked_at=? WHERE id=? AND status='pending_verification'").bind(now, invoice.id).run();
       const chains = await Promise.all(RPCS.map(async url => {
-        const body = await boundedJson(await fetcher(url, { method: "POST", redirect: "error",
+        const body = await boundedJson(await fetcher(url, { method: "POST", redirect: "manual",
           headers: { "content-type": "application/json" }, signal: AbortSignal.timeout(15000),
           body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_chainId", params: [] }) }));
         return !body.error && body.result === "0x2105";
