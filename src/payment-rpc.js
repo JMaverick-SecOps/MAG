@@ -1,5 +1,6 @@
 // Read-only payment transport. Authenticated endpoint URLs belong in Worker
 // secrets, never public config, response bodies or logs.
+import { evmNetwork } from './evm-networks.js';
 const RPCS = Object.freeze(['https://mainnet.base.org', 'https://base-rpc.publicnode.com']);
 const READ_METHODS = new Set(['eth_chainId', 'eth_getTransactionReceipt', 'eth_getTransactionByHash', 'eth_getBlockByNumber', 'eth_blockNumber']);
 const MAX_BYTES = 1_000_000;
@@ -47,7 +48,28 @@ async function fingerprint(url) {
 // D1 backoff survives isolates/restarts; no payment is ever marked failed/paid
 // because of an outage. The existing scheduled processors resume automatically.
 function createPaymentRpc(env = {}, fetcher = fetch, clock = Date.now) {
-  const providers=paymentRpcProviders(env), states=new Map();
+  return readOnlyTransport(env, fetcher, clock, paymentRpcProviders(env));
+}
+// This single-provider client is for development reads only. Payment settlement
+// still exclusively constructs createPaymentRpc's two independent witnesses.
+function createAlchemyReadRpc(env, network, fetcher = fetch, clock = Date.now) {
+  const profile=evmNetwork(network), key=env.MAG_ALCHEMY_API_KEY;
+  if(!key)throw new PaymentRpcError('alchemy_credential_missing');
+  if(typeof key!=='string'||! /^[A-Za-z0-9_-]{20,128}$/.test(key))throw new PaymentRpcError('invalid_alchemy_credential');
+  const client=readOnlyTransport(env,fetcher,clock,[{operator:'alchemy',url:`https://${profile.alchemy_host}/v2/${key}`}]);
+  let chainCheck;
+  return {request:async(method,params=[])=>{
+    if(!READ_METHODS.has(method))throw new PaymentRpcError('read_only_method_required');
+    chainCheck??=client.request(0,'eth_chainId').then(chain=>{
+      if(chain!==profile.chain_hex)throw new PaymentRpcError('wrong_chain');
+      return chain;
+    });
+    const chain=await chainCheck;
+    return method==='eth_chainId'?chain:client.request(0,method,params);
+  }};
+}
+function readOnlyTransport(env, fetcher, clock, providers) {
+  const states=new Map();
   function request(index, method, params=[]) {
     if(!READ_METHODS.has(method))return Promise.reject(new PaymentRpcError('read_only_method_required'));
     const provider=providers[index];if(!provider)return Promise.reject(new PaymentRpcError('invalid_witness'));
@@ -100,4 +122,4 @@ async function collectWitnesses(client, observe) {
   const failed=settled.find(r=>r.status==='rejected');if(failed)throw failed.reason;
   return settled.map(r=>r.value);
 }
-export {RPCS, PaymentRpcError, paymentRpcProviders, createPaymentRpc, collectWitnesses, paymentRpcHealth};
+export {RPCS, PaymentRpcError, paymentRpcProviders, createPaymentRpc, createAlchemyReadRpc, collectWitnesses, paymentRpcHealth};

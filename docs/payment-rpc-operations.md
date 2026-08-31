@@ -5,6 +5,8 @@ Upgrading Workers does not increase an upstream RPC provider's allowance.
 
 ## Configuration
 
+For the approved Alchemy/OnFinality pair, `scripts/configure-rpc-secrets.ps1` provides a single hidden-input handoff, including the new read-only chain adapter. See [Alchemy and chains](alchemy-and-chains.md). Neither key belongs in chat, a committed file, a browser-visible MAG field or a command argument.
+
 Set both `MAG_BASE_RPC_PRIMARY_URL` and `MAG_BASE_RPC_SECONDARY_URL` as **Worker secrets** containing account-specific Base mainnet HTTPS endpoints. Do not put credential-bearing URLs in `wrangler.jsonc`, chat, command arguments, logs or browser-visible MAG fields. Use Wrangler's hidden prompt:
 
 ```

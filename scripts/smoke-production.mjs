@@ -97,6 +97,13 @@ const wallet=await (await check("/wallet-checkout.js")).text();
 assert.ok(wallet.includes("eth_sendTransaction"));
 assert.ok(wallet.includes("sendOutcomeUnknown"));
 await check("/admin/config", 401);
+await check('/admin/payment-rpc-health',401);
+await check('/admin/alchemy/health?network=base',401);
+const chains=await (await check('/api/chains')).json();
+assert.equal(chains.default_payment_network,'base');
+assert.deepEqual(chains.networks.map(n=>n.chain_id),[8453,1,4663,46630]);
+assert.ok(chains.networks.every(n=>n.payment_readiness_verified===false));
+assert.equal(chains.networks.find(n=>n.id==='robinhood-testnet').checkout_implementation,'never_accept_testnet_payments');
 await check("/orders/status", 404, { method: "POST", body: new URLSearchParams({ order_id: "00000000-0000-4000-8000-000000000001", access_token: "invalid-release-test-token" }) });
 
 for (const path of ["/mag-logo.png", "/mag-logo-light.png", "/mag-logo-dark.png", "/mag-app-icon.png", "/mag-favicon.png"]) {
