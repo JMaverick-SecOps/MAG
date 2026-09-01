@@ -40,7 +40,12 @@ for (const path of ["/api/tasks", "/api/services", "/api/migrations", "/api/mana
 const providers = await (await check("/api/payment-providers")).json();
 assert.equal(typeof providers.paid_intake_ready, "boolean");
 assert.equal(providers.saturnshift.delivery_test.supported, true);
-assert.equal(providers.saturnshift.delivery_test.payment_activation, false);
+assert.equal(providers.saturnshift.checkout_configured, true);
+assert.equal(providers.saturnshift.payment_intake_configured, true);
+assert.equal(providers.saturnshift.delivery_test.payment_activation, true);
+assert.equal(providers.saturnshift.automatic_fulfillment_configured, false);
+assert.deepEqual(providers.saturnshift.methods, ["card", "bank", "crypto"]);
+assert.deepEqual(providers.saturnshift.excluded_products, ["agent_connection_day"]);
 const securityPage = await (await check("/security")).text();
 for (const id of ["static-scan-review", "focused-code-review", "application-review", "architecture-threat-model"]) {
   assert.ok(securityPage.includes('href="/hire?service='+id+'#checkout"'), id);
@@ -62,6 +67,8 @@ const agentConnection = await (await check("/api/agent-connections")).json();
 assert.equal(agentConnection.amount_atomic, "1000000");
 assert.equal(agentConnection.chain_id, 8453);
 assert.equal(agentConnection.automatic_debit, false);
+assert.equal(agentConnection.payment_provider, "direct_base_usdc");
+assert.equal(agentConnection.saturnshift_enabled, false);
 assert.equal(typeof agentConnection.enabled, "boolean");
 assert.equal(typeof agentConnection.hosted_work_watch_enabled, "boolean");
 if (!agentConnection.enabled) {
@@ -90,6 +97,10 @@ for(const id of ["migration-fabric","static-scan-review","managed-ops-psa"]){
 const plans=await (await check("/api/subscriptions/plans")).json();
 assert.equal(plans.automatic_debit,false);
 assert.ok(!plans.enabled_plans.includes("managed-security"));
+assert.deepEqual(plans.payment_methods,["saturnshift_card","saturnshift_bank","saturnshift_crypto","base_native_usdc"]);
+assert.equal(plans.saturnshift.payment_intake_configured,true);
+assert.equal(plans.saturnshift.automatic_fulfillment_configured,false);
+assert.equal(plans.saturnshift.agent_access_included,false);
 await check("/subscriptions/billing",401);
 await check("/api/rmm/poll",403,invalidJson);
 await check("/api/rmm/results",403,invalidJson);
@@ -113,4 +124,4 @@ for (const path of ["/mag-logo.png", "/mag-logo-light.png", "/mag-logo-dark.png"
   assert.ok(bytes.length < 2_000_000, `${path} exceeds the branding upload limit`);
   assert.deepEqual(Array.from(bytes.slice(0, 8)), [137, 80, 78, 71, 13, 10, 26, 10]);
 }
-console.log(JSON.stringify({ checked_at: new Date().toISOString(), origin, checks_passed: results.length, paid_intake_ready: providers.paid_intake_ready, saturnshift_enabled: providers.saturnshift.configured, results }, null, 2));
+console.log(JSON.stringify({ checked_at: new Date().toISOString(), origin, checks_passed: results.length, paid_intake_ready: providers.paid_intake_ready, saturnshift_checkout_configured: providers.saturnshift.checkout_configured, saturnshift_automatic_fulfillment_configured: providers.saturnshift.automatic_fulfillment_configured, results }, null, 2));

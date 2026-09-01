@@ -57,7 +57,7 @@ The recipe reads up to 40 listings, with four concurrent detail reads and a 128 
 
 ## SaturnShift
 
-Direct Base verification does not replace the user's requested SaturnShift merchant checkout. The authenticated developer page currently shows the public widget and redirects, not a server-side payment-proof control. Keep SaturnShift settlement disabled until the final event contract, registered MAG webhook and provider-generated signed test are independently verified. The signing secret must go through Wrangler's hidden prompt; never paste it into chat, source, logs or visible browser fields. No real payment has been made for these tests.
+Direct Base verification does not replace SaturnShift for ordinary MAG services. The authenticated developer page shows the public widget and redirects, not a server-side payment-proof control. The public-key checkout is enabled for service and PSA/RMM intake, but agent-day access is deliberately excluded and remains direct Base USDC. Keep SaturnShift fulfillment disabled until the final event contract, registered MAG webhook and provider-generated signed test are independently verified. The signing secret must go through Wrangler's hidden prompt; never paste it into chat, source, logs or visible browser fields. No real payment has been made for these tests.
 
 ## Validation boundary
 

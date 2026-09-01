@@ -661,12 +661,12 @@ async function handleRequest(request, env) {
   if (request.method === "POST" && url.pathname === "/orders") return captureOrderForm(request, env);
   if (request.method === "GET" && url.pathname === "/orders/status") {
     const session=orderSession(request);
-    return session?orderStatusResponse(env,session.id,session.token):orderLoginPage();
+    return session?orderStatusResponse(env,session.id,session.token,paymentProviderOptions(env)):orderLoginPage();
   }
   const orderStatus = url.pathname.match(/^\/orders\/([0-9a-f-]+)\/status$/i);
   if (request.method === "POST" && (orderStatus || url.pathname === "/orders/status")) {
     const form = await request.formData();
-    return orderStatusResponse(env, orderStatus?.[1] || String(form.get("order_id") || ""), String(form.get("access_token") || ""));
+    return orderStatusResponse(env, orderStatus?.[1] || String(form.get("order_id") || ""), String(form.get("access_token") || ""), paymentProviderOptions(env));
   }
   const hostedCheckout = url.pathname.match(/^\/orders\/([0-9a-f-]+)\/checkout$/i);
   if (request.method === "POST" && hostedCheckout) {

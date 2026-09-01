@@ -4,7 +4,7 @@ Checked 2026-08-28T04:19:32.636Z. This records tested capability and remaining g
 
 ## SaturnShift
 
-The public checkout key is connected. MAG-specific server API access and the webhook signing secret have not been issued to this deployment. A request was submitted through the authenticated merchant support page; the UI confirmed **Report received**, but supplied no ticket number. It requests a MAG-specific client/credential, minimal checkout/read/webhook permissions, secure signing-secret delivery, endpoint registration and signed fixtures. It requests no spending scope, payout change or plan upgrade.
+The public checkout key is connected. Ordinary service orders and PSA/RMM subscription invoices can launch the real SaturnShift merchant checkout using server-priced amounts, unique references and idempotency keys. Agent-day access is explicitly excluded. MAG-specific server API access and the webhook signing secret have not been issued to this deployment, so a return redirect does not activate access or publish work. A request was submitted through the authenticated merchant support page; the UI confirmed **Report received**, but supplied no ticket number. It requests a MAG-specific client/credential, minimal checkout/read/webhook permissions, secure signing-secret delivery, endpoint registration and signed fixtures. It requests no spending scope, payout change or plan upgrade.
 
 Webhook endpoint: https://mavverick-scout.magai.workers.dev/api/webhooks/saturnshift
 
@@ -49,7 +49,7 @@ Current regression result before release: **153 JavaScript tests and 7 migration
 - Code commit: `299c1268f8cd75e22f31e40bb418dbb04a291c82`, pushed to `codex/finish-mag-builds` (not merged into the default branch).
 - [GitHub CI](https://github.com/JMaverick-SecOps/MAG/actions/runs/33141548799): completed successfully.
 - Cloudflare deployment: `795412ef-950a-484b-aa1e-9bd90a62468e`.
-- Production smoke: **47 checks passed**, observed 2026-08-28T04:21:58Z. Direct USDC intake remains configured; SaturnShift financial processing remains disabled.
+- The public merchant checkout is enabled for service and PSA/RMM payment intake. Automatic SaturnShift fulfillment remains disabled until authenticated provider evidence is available; direct Base USDC remains independently verified.
 - Browser check: live product navigation, sample-only labels, plan selection and integration availability rendered correctly.
 - Community reply: `verification-witnesses-2776-299c126` was inserted once into the existing conversation queue. The readback remained `queued`, with no public comment receipt yet. The queued text and pinned test artifact are preserved in `ops/verification-witnesses-2776.sql`. No extra recruitment campaign was started.
 - No live customer purchase, wallet transaction, migration, remote-device action, bounty acceptance or payout was performed.
@@ -61,6 +61,15 @@ Current regression result before release: **153 JavaScript tests and 7 migration
 - Verification: **153 JavaScript tests and 7 Python migration-mail tests passed**; Wrangler production build dry-run passed.
 - Production smoke: **47 checks passed** at `2026-08-29T02:08:12.043Z`; paid intake is ready and the public key is configured.
 - Live readback confirms `trial_days=30`, `tenant_payment_provider_required=false`, and the preselected RMM/PSA form displays the 30-day trial.
-- SaturnShift financial activation remains fail-closed: `configured=false` because the signed endpoint has not been registered and its secret has not been stored. No live hosted payment or entitlement change is claimed.
+- SaturnShift payment intake is configured from the merchant public key. Automatic fulfillment remains fail-closed: `automatic_fulfillment_configured=false` because the signed endpoint has not been registered and its secret has not been stored. No live payment or entitlement change is claimed.
 - Authenticated SaturnShift dashboard verification: the Developers page exposes the matching live public key and checkout toggles for crypto, card and bank payments. The Developers and Integrations pages do not expose webhook endpoint registration or a signing-secret control; provider support must register `https://mavverick-scout.magai.workers.dev/api/webhooks/saturnshift` or expose the account-specific control before MAG can safely enable fulfillment.
 - SaturnShift support request submitted from the authenticated merchant dashboard on August 28, 2026. The dashboard returned `Report received` / `Issue reported`. The request names the exact MAG webhook endpoint, asks for final payment and refund events across card, ACH/bank and crypto, requests secure dashboard delivery of the signing secret, and asks for the documented fiat event schema and test-event procedure. SaturnShift did not return a case number or signing secret in the receipt.
+
+### Public-key service checkout release — September 1, 2026
+
+- Cloudflare Worker version: `416f87e8-2d96-4edf-b730-98c5ba6f40cc`.
+- Verification: **207 JavaScript tests and 7 Python migration-mail tests passed**; the isolated Wrangler production build dry run passed.
+- Production smoke: **51 non-monetary checks passed** at `2026-09-01T23:37:36.768Z`.
+- Live readback confirms SaturnShift payment intake is configured with card, bank and crypto for ordinary services and PSA/RMM invoices.
+- Live readback confirms the agent-day manifest still uses `direct_base_usdc` and reports `saturnshift_enabled=false`.
+- Automatic SaturnShift fulfillment remains fail-closed until the merchant receives an account-specific signing secret, the provider registers the MAG endpoint and a signed test event passes. No real payment was made as a test.

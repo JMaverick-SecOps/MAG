@@ -106,6 +106,25 @@ function validPublicKey(env) {
 }
 function fiatCheckoutReady(env){return env?.SATURNSHIFT_FIAT_WEBHOOK_STATUS==="provider_confirmed";}
 
+function checkoutMethods(env) {
+  const allowed = new Set(["card", "bank", "crypto"]);
+  const configured = String(env?.SATURNSHIFT_CHECKOUT_METHODS || "crypto")
+    .split(",")
+    .map((method) => method.trim().toLowerCase())
+    .filter((method) => allowed.has(method));
+  return [...new Set(configured.length ? configured : ["crypto"])];
+}
+
+function checkoutMethodFlags(env) {
+  const methods = checkoutMethods(env);
+  return {
+    methods,
+    allowCard: methods.includes("card"),
+    allowBank: methods.includes("bank"),
+    allowCrypto: methods.includes("crypto"),
+  };
+}
+
 function directBaseUsdcConfig(env) {
   const treasury = String(env?.TREASURY_WALLET_ADDRESS || "");
   if (!/^0x[a-fA-F0-9]{40}$/.test(treasury)) return null;
@@ -135,15 +154,25 @@ function webhookVerificationReadiness(env) {
 
 function paymentProviderOptions(env) {
   const webhook = webhookVerificationReadiness(env);
+  const publicKey = Boolean(validPublicKey(env));
+  const methods = checkoutMethods(env);
   return {
     saturnshift: {
-      checkout_configured: Boolean(validPublicKey(env)),
-      configured: Boolean(validPublicKey(env)) && webhook.ready,
+      checkout_configured: publicKey,
+      payment_intake_configured: publicKey,
+      configured: publicKey && webhook.ready,
       signed_webhook_configured: webhook.ready,
-      delivery_test: { supported: true, secret_configured: hasDeliverySecret(env?.SATURNSHIFT_WEBHOOK_SECRET), payment_activation: false },
-      methods: fiatCheckoutReady(env)?["card", "bank", "crypto"]:["crypto"],
+      automatic_fulfillment_configured: publicKey && webhook.ready,
+      delivery_test: { supported: true, secret_configured: hasDeliverySecret(env?.SATURNSHIFT_WEBHOOK_SECRET), payment_activation: publicKey },
+      methods,
       settlement_proof: "documented_signed_payment.paid_webhook_plus_exact_server_amount_and_base_usdc_fields",
-      fiat_policy: "checkout offered; card and ACH fulfillment remains in review until the merchant event schema is independently confirmed",
+      fulfillment_policy: webhook.ready
+        ? "signed final events may update an exact matching service order or subscription invoice"
+        : "checkout accepts payment, but redirects never grant access or publish work; reconciliation remains pending until authenticated provider evidence is available",
+      fiat_policy: fiatCheckoutReady(env)
+        ? "signed card and ACH events may enter the configured settlement policy"
+        : "card and ACH may be accepted by SaturnShift, but MAG fulfillment remains pending until the merchant event schema is independently confirmed",
+      excluded_products: ["agent_connection_day"],
     },
     base_usdc_direct: {
       configured: Boolean(directBaseUsdcConfig(env)),
@@ -174,7 +203,8 @@ function checkoutHeaders(nonce) {
 
 function checkoutPage(order, accessToken, env, requestUrl) {
   if (!UUID.test(String(order.id || ""))) throw new SaturnShiftError("invalid_order_id", 409);
-  const key = webhookVerificationReadiness(env).ready ? validPublicKey(env) : null;
+  const key = validPublicKey(env);
+  const methodFlags = checkoutMethodFlags(env);
   const direct = directBaseUsdcConfig(env);
   const { amount, display } = atomicAmount(order.quoted_atomic);
   const service = serviceById(order.service_id);
@@ -191,14 +221,14 @@ function checkoutPage(order, accessToken, env, requestUrl) {
     idempotencyKey: order.id,
     redirectUrl,
     openInNewTab: false,
-    allowCard: fiatCheckoutReady(env),
-    allowBank: fiatCheckoutReady(env),
-    allowCrypto: true,
+    allowCard: methodFlags.allowCard,
+    allowBank: methodFlags.allowBank,
+    allowCrypto: methodFlags.allowCrypto,
     processingFeeEnabled: false,
   } : null;
   const saturnPanel = config
-    ? `<section class="panel primary"><p class="eyebrow">Hosted checkout</p><h2>Pay $${html(display)} USD</h2><p>Choose card, ACH bank payment, or supported crypto in SaturnShift's hosted overlay.</p><button id="saturnshift-pay" type="button">Choose payment method</button><p id="checkout-error" class="error" role="alert" hidden>Hosted checkout could not load. No payment was recorded. Use the direct Base-USDC option or try again later.</p><p class="fine">Returning to MAG is not payment proof. A verified crypto payment can open work only when the provider confirms settlement as USDC on Base. Verified card or bank payment remains in payment review until an explicit USDC reserve-coverage gate is satisfied.</p></section>`
-    : `<section class="panel unavailable"><h2>Hosted checkout unavailable</h2><p>The public key and verified webhook integration must both be configured. No hosted payment can be initiated.</p></section>`;
+    ? `<section class="panel primary"><p class="eyebrow">SaturnShift checkout</p><h2>Pay $${html(display)} USD</h2><p>Choose an enabled payment method in SaturnShift's hosted overlay. Agent-day access is not sold through this checkout.</p><button id="saturnshift-pay" type="button">Pay with SaturnShift</button><p id="checkout-error" class="error" role="alert" hidden>Hosted checkout could not load. No payment was recorded. Use the direct Base-USDC option or try again later.</p><p class="fine">SaturnShift can accept the payment and show it in MAG's merchant dashboard. Returning to MAG is not payment proof: access and work publication stay pending until authenticated provider evidence matches this exact server-priced order.</p></section>`
+    : `<section class="panel unavailable"><h2>Hosted checkout unavailable</h2><p>The SaturnShift merchant public key is not configured. No hosted payment can be initiated.</p></section>`;
   const directPanel = direct
     ? `<section class="panel"><p class="eyebrow">Direct settlement remains available</p><h2>Pay ${html(display)} USDC on Base</h2><dl><div><dt>Treasury</dt><dd><code>${html(direct.treasury_address)}</code></dd></div><div><dt>Native USDC contract</dt><dd><code>${html(direct.token_contract)}</code></dd></div><div><dt>Chain</dt><dd>Base · 8453</dd></div></dl><p>Send exactly <strong>${html(display)} USDC</strong>, then submit the transaction hash for independent two-RPC verification.</p><p><a href="/orders/status">Open private order to submit a Base receipt</a>. Enter the order token only on that MAG-only page, which contains no third-party script.</p><p class="fine">Never enter a seed phrase, private key, wallet password, or unlimited approval.</p></section>`
     : `<section class="panel unavailable"><h2>Direct Base-USDC temporarily unavailable</h2><p>No treasury receive address is configured. Do not send funds.</p></section>`;
@@ -221,13 +251,13 @@ async function saturnShiftCheckoutResponse(env, orderId, accessToken, requestUrl
 
 function subscriptionCheckoutPage(subscription,invoice,env,requestUrl) {
   const reference=`subscription_invoice:${invoice.id}`;
-  const key=webhookVerificationReadiness(env).ready?validPublicKey(env):null;
+  const key=validPublicKey(env),methodFlags=checkoutMethodFlags(env);
   const {amount,display}=atomicAmount(invoice.amount_atomic);
   const title=`${clean(subscription.plan_id,60)} subscription`;
   const redirectUrl=new URL(`/subscriptions/payment-return?invoice=${encodeURIComponent(invoice.id)}`,checkoutOrigin(env,requestUrl)).href;
   const nonce=crypto.randomUUID().replace(/-/g,"");
-  const config=key?{publicKey:key,amount,currency:"USD",title,description:`MAG subscription invoice ${invoice.id}`,externalReference:reference,idempotencyKey:reference,redirectUrl,openInNewTab:false,allowCard:fiatCheckoutReady(env),allowBank:fiatCheckoutReady(env),allowCrypto:true,processingFeeEnabled:false}:null;
-  const hosted=config?`<section class="panel primary"><p class="eyebrow">Pay MAG</p><h2>Pay $${html(display)} USD</h2><p>Choose card, ACH bank payment, or supported stablecoin in MAG's SaturnShift-hosted checkout.</p><button id="saturnshift-pay" type="button">Choose payment method</button><p id="checkout-error" class="error" role="alert" hidden>Hosted checkout could not load. No payment was recorded.</p><p class="fine">Your PSA/RMM tenant does not need a SaturnShift account. The provider is MAG's merchant payment rail only. Access changes only after a signed final payment event matches this exact server-priced invoice.</p></section>`:`<section class="panel unavailable"><h2>Hosted checkout unavailable</h2><p>MAG has not completed the signing-secret and endpoint-registration checks. No hosted payment can be initiated. Return to billing for the direct Base-USDC option.</p></section>`;
+  const config=key?{publicKey:key,amount,currency:"USD",title,description:`MAG subscription invoice ${invoice.id}`,externalReference:reference,idempotencyKey:reference,redirectUrl,openInNewTab:false,allowCard:methodFlags.allowCard,allowBank:methodFlags.allowBank,allowCrypto:methodFlags.allowCrypto,processingFeeEnabled:false}:null;
+  const hosted=config?`<section class="panel primary"><p class="eyebrow">Pay MAG</p><h2>Pay $${html(display)} USD</h2><p>Choose an enabled payment method in MAG's SaturnShift-hosted checkout.</p><button id="saturnshift-pay" type="button">Pay with SaturnShift</button><p id="checkout-error" class="error" role="alert" hidden>Hosted checkout could not load. No payment was recorded.</p><p class="fine">Your PSA/RMM tenant does not need a SaturnShift account. SaturnShift is MAG's merchant payment rail only, and agent-day access is excluded. A browser return never changes access; the invoice remains pending until authenticated provider evidence matches it.</p></section>`:`<section class="panel unavailable"><h2>Hosted checkout unavailable</h2><p>MAG's SaturnShift merchant public key is not configured. Return to billing for the direct Base-USDC option.</p></section>`;
   const scripts=config?`<script src="${SATURNSHIFT_SCRIPT_URL}"></script><script nonce="${nonce}">(()=>{const e=document.getElementById("checkout-error");try{if(!globalThis.SaturnShift||typeof globalThis.SaturnShift.checkout!=="function")throw new Error("checkout unavailable");globalThis.SaturnShift.checkout(${jsonForScript(config)},"#saturnshift-pay");}catch(_){document.getElementById("saturnshift-pay").disabled=true;e.hidden=false;}})();</script>`:"";
   return new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MAG subscription checkout</title><style>:root{color-scheme:dark}*{box-sizing:border-box}body{max-width:820px;margin:6vh auto;padding:0 22px;background:#06162c;color:#eef8ff;font:17px/1.55 system-ui}.panel{background:#0a203b;border:1px solid #2b5776;border-radius:18px;padding:24px;margin:18px 0}.primary{border-color:#10d7ec}.eyebrow,a{color:#65e8f4}button{font:inherit;border:0;border-radius:9px;padding:13px;background:#10d7ec;color:#031421;font-weight:850}.fine{color:#a9bdcc;font-size:.9rem}.error,.unavailable{color:#ffd8d8}</style></head><body><a href="/subscriptions/billing">← Subscription billing</a><h1>${html(title)}</h1>${hosted}${scripts}</body></html>`,{status:200,headers:checkoutHeaders(nonce)});
 }

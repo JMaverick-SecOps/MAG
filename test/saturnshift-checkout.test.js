@@ -168,6 +168,7 @@ test("hosted checkout uses only the env public key, stable order identity, and a
     ...webhookEnv(db),
     SCOUT_ENVIRONMENT: "production",
     SATURNSHIFT_PUBLIC_KEY: "pk_test_public_from_environment",
+    SATURNSHIFT_CHECKOUT_METHODS: "card,bank,crypto",
     TREASURY_WALLET_ADDRESS: TREASURY,
   };
   const response = await saturnShiftCheckoutResponse(env, order.id, order.access_token, "https://example.test/orders/checkout");
@@ -183,7 +184,7 @@ test("hosted checkout uses only the env public key, stable order identity, and a
   assert.match(body, /href="\/orders\/status"/);
   assert.equal(body.includes(order.access_token), false, "third-party checkout script must never share a page with the private order token");
   assert.match(body, new RegExp(BASE_USDC_CONTRACT));
-  assert.match(body, /verified card or bank payment remains in payment review/i);
+  assert.match(body, /access and work publication stay pending until authenticated provider evidence/i);
   assert.doesNotMatch(body, /SATURNSHIFT_WEBHOOK_SECRET/);
   assert.match(response.headers.get("content-security-policy"), /api\.saturnshift\.io\/checkout\.js/);
   assert.equal(response.headers.get("referrer-policy"), "no-referrer");
@@ -213,7 +214,7 @@ test("redirect response never changes payment state or claims payment proof", as
   assert.equal(db.prepare("SELECT COUNT(*) count FROM payment_provider_events").first().count, 0);
 });
 
-test("hosted financial checkout stays disabled until the documented endpoint is registered", async (t) => {
+test("webhook fulfillment stays disabled until the documented endpoint is registered", async (t) => {
   const db = new TestD1();
   t.after(() => db.close());
   const order = await orderFixture(db);
@@ -228,6 +229,32 @@ test("hosted financial checkout stays disabled until the documented endpoint is 
   assert.deepEqual(await response.json(), { error: "saturnshift_webhook_verification_not_configured" });
   assert.equal(db.prepare("SELECT COUNT(*) count FROM tasks").first().count, 0);
   assert.equal(db.prepare("SELECT COUNT(*) count FROM payment_provider_events").first().count, 0);
+});
+
+test("merchant checkout accepts payment intake with the public key while fulfillment remains fail-closed", async (t) => {
+  const db = new TestD1();
+  t.after(() => db.close());
+  const order = await orderFixture(db);
+  const env = {
+    DB: db,
+    SCOUT_ENVIRONMENT: "production",
+    SATURNSHIFT_PUBLIC_KEY: "pk_test_public_from_environment",
+    SATURNSHIFT_CHECKOUT_METHODS: "card,bank,crypto",
+    TREASURY_WALLET_ADDRESS: TREASURY,
+  };
+  const options = paymentProviderOptions(env).saturnshift;
+  assert.equal(options.checkout_configured, true);
+  assert.equal(options.payment_intake_configured, true);
+  assert.equal(options.automatic_fulfillment_configured, false);
+  assert.deepEqual(options.excluded_products, ["agent_connection_day"]);
+  const response = await saturnShiftCheckoutResponse(env, order.id, order.access_token, "https://example.test/orders/checkout");
+  const body = await response.text();
+  assert.equal(response.status, 200);
+  assert.match(body, /Pay with SaturnShift/);
+  assert.match(body, /"allowCard":true/);
+  assert.match(body, /"allowBank":true/);
+  assert.match(body, /"allowCrypto":true/);
+  assert.match(body, /Agent-day access is not sold through this checkout/);
 });
 
 test("invalid webhook HMAC fails closed without durable payment state", async (t) => {
@@ -371,7 +398,7 @@ test("synthetic signed provider settlement supports claimed delivery and one acc
 
 test("MAG subscription checkout uses the tenant-independent merchant rail and extends access once",async t=>{
   const db=new TestD1();t.after(()=>db.close());
-  const now=Date.now(),env={...webhookEnv(db),SCOUT_ADMIN_TOKEN:"test-owner",TREASURY_WALLET_ADDRESS:TREASURY,MAG_SUBSCRIPTION_PLANS:"psa-workspace",SATURNSHIFT_PUBLIC_KEY:"pk_test_mag_merchant",SCOUT_ENVIRONMENT:"production"};
+  const now=Date.now(),env={...webhookEnv(db),SCOUT_ADMIN_TOKEN:"test-owner",TREASURY_WALLET_ADDRESS:TREASURY,MAG_SUBSCRIPTION_PLANS:"psa-workspace",SATURNSHIFT_PUBLIC_KEY:"pk_test_mag_merchant",SATURNSHIFT_CHECKOUT_METHODS:"card,bank,crypto",SCOUT_ENVIRONMENT:"production"};
   const created=await createSubscription(env,{name:"Tenant customer",contact_email:"owner@tenant-pay.example",plan_id:"psa-workspace",max_assets:4,authorized_domains:["tenant-pay.example"],authorization_attested:true,data_processing_consent:true,terms_accepted:true,request_key:crypto.randomUUID()},now);
   const checkout=await saturnShiftSubscriptionCheckoutResponse(env,created.id,created.invoice_id,created.access_token,"https://example.test/subscriptions/checkout");
   assert.equal(checkout.status,200);const markup=await checkout.text();

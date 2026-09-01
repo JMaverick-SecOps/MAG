@@ -24,14 +24,14 @@ function orderAccessForms(order, token, options = {}) {
   const id = escape(order.id);
   const secret = escape(token);
   const receipt = options.includeReceipt === true && order.payment_status === "unsubmitted" ? (order.payment_binding_required ? walletCheckoutMarkup({accessToken:token,intentUrl:`/api/orders/${order.id}/payment-intent`,receiptUrl:`/api/orders/${order.id}/payment-receipts`,amount:Number(order.quoted_atomic)/1e6}) : `<form method="post" action="/orders/${id}/payment-receipts"><input type="hidden" name="access_token" value="${secret}"><label>Base transaction hash<input name="tx_hash" required minlength="66" maxlength="66" pattern="0x[a-fA-F0-9]{64}" placeholder="0x…"></label><button>Submit Base receipt</button></form>`) : "";
-  const checkout = options.saturnshift?.configured && options.saturnshift?.signed_webhook_configured
+  const checkout = options.saturnshift?.checkout_configured
     ? `<form method="post" action="/orders/${id}/checkout"><input type="hidden" name="access_token" value="${secret}"><button>Open SaturnShift payment options</button></form>` : "";
   return `${receipt}${checkout}<form method="post" action="/orders/${id}/status"><input type="hidden" name="access_token" value="${secret}"><button>View order progress and delivery</button></form>`;
 }
 function orderLoginPage() {
   return page(`<p>Use your invoice ID and order access token. No wallet secret is required.</p><form action="/orders/status" method="post"><label>Order ID<input name="order_id" required maxlength="36"></label><label>Order access token<input name="access_token" type="password" required maxlength="100" autocomplete="off"></label><button>Open private order</button></form>`);
 }
-async function orderStatusResponse(env, orderId, token) {
+async function orderStatusResponse(env, orderId, token, options = {}) {
   if (!env.DB) return page("<p>Order storage is not configured.</p>",503);
   const order = await authorizedOrder(env.DB, orderId, token);
   if (!order) return page("<p>Order not found or access token is invalid.</p>",404);
@@ -39,6 +39,6 @@ async function orderStatusResponse(env, orderId, token) {
   let artifact = null;
   try { const url = new URL(order.delivery_artifact); if (url.protocol === "https:" && !url.username && !url.password) artifact = url.href; } catch {}
   const delivery = artifact ? `<section><h2>${order.status === "completed" ? "Accepted delivery" : "Submitted delivery — review pending"}</h2><p><a href="${escape(artifact)}" target="_blank" rel="noopener noreferrer">Open delivery artifact ↗</a></p><p class="note">Agent-provided external artifact. Inspect it before downloading or executing anything. A signature proves key control, not code safety.</p></section>` : "<section><h2>Delivery</h2><p>No delivery has been submitted yet. Payment is not a guarantee that an agent has claimed the task.</p></section>";
-  return page(`<section><h2>${escape(serviceById(order.service_id)?.name || order.service_id)}</h2><dl><dt>Order</dt><dd>${escape(order.id)}</dd><dt>Status</dt><dd>${escape(order.status)}</dd><dt>Payment</dt><dd>${escape(order.payment_status)}</dd><dt>Assigned agent</dt><dd>${escape(order.assigned_agent || "Awaiting signed claim")}</dd><dt>Amount</dt><dd>${Number(order.quoted_atomic)/1e6} USDC</dd></dl><h3>Acceptance criteria</h3><pre>${escape(order.acceptance_criteria)}</pre></section>${delivery}${orderAccessForms(order,token,{includeReceipt:true})}<section><h2>Audit trail</h2><ol>${(events.results || []).map(e=>`<li>${escape(e.kind)} · ${escape(new Date(e.created_at).toISOString())}</li>`).join("")}</ol></section><p class="note">Acceptance and payout are separate. MAG never signs or spends treasury funds automatically.</p>`);
+  return page(`<section><h2>${escape(serviceById(order.service_id)?.name || order.service_id)}</h2><dl><dt>Order</dt><dd>${escape(order.id)}</dd><dt>Status</dt><dd>${escape(order.status)}</dd><dt>Payment</dt><dd>${escape(order.payment_status)}</dd><dt>Assigned agent</dt><dd>${escape(order.assigned_agent || "Awaiting signed claim")}</dd><dt>Amount</dt><dd>${Number(order.quoted_atomic)/1e6} USDC</dd></dl><h3>Acceptance criteria</h3><pre>${escape(order.acceptance_criteria)}</pre></section>${delivery}${orderAccessForms(order,token,{...options,includeReceipt:true})}<section><h2>Audit trail</h2><ol>${(events.results || []).map(e=>`<li>${escape(e.kind)} · ${escape(new Date(e.created_at).toISOString())}</li>`).join("")}</ol></section><p class="note">Acceptance and payout are separate. MAG never signs or spends treasury funds automatically.</p>`);
 }
 export { orderAccessForms, orderLoginPage, orderStatusResponse, orderSession, orderSessionCookie };

@@ -61,7 +61,7 @@ test("new orders cannot submit an unbound payment and publish only once after fi
   assert.equal(db.prepare("SELECT COUNT(*) n FROM tasks").first().n,1);
 });
 const subscribe=()=>{const nonce=crypto.randomUUID().slice(0,8);return {name:"Example business",contact_email:`owner@${nonce}.example.test`,plan_id:"psa-workspace",max_assets:3,authorized_domains:[`${nonce}.example.test`],authorization_attested:true,data_processing_consent:true,terms_accepted:true,request_key:crypto.randomUUID()};};
-const environment=db=>({DB:db,SCOUT_ADMIN_TOKEN:"test-only-owner-token",TREASURY_WALLET_ADDRESS:TREASURY,MAG_SUBSCRIPTION_PLANS:"psa-workspace"});
+const environment=db=>({DB:db,SCOUT_ADMIN_TOKEN:"test-only-owner-token",TREASURY_WALLET_ADDRESS:TREASURY,MAG_SUBSCRIPTION_PLANS:"psa-workspace",SATURNSHIFT_PUBLIC_KEY:"pk_test_mag_merchant",SATURNSHIFT_CHECKOUT_METHODS:"card,bank,crypto"});
 test("subscription quote is server-controlled and calendar month handling clamps month end",()=>{
   assert.equal(monthlyQuote("psa-workspace",100),"79000000");
   assert.equal(monthlyQuote("managed-visibility",2),"79000000");
@@ -190,7 +190,7 @@ test("subscription plan API describes MAG merchant checkout without imposing it 
  const db=new TestD1();t.after(()=>db.close());const env=environment(db);
  const response=await worker.fetch(new Request("https://example.test/api/subscriptions/plans"),env);
  assert.equal(response.status,200);
- assert.deepEqual(await response.json(),{enabled_plans:["psa-workspace"],trial_days:30,billing:"mag_merchant_checkout",payment_methods:["card","ach","stablecoin","base_native_usdc"],tenant_payment_provider_required:false,automatic_debit:false});
+ assert.deepEqual(await response.json(),{enabled_plans:["psa-workspace"],trial_days:30,billing:"mag_merchant_checkout",payment_methods:["saturnshift_card","saturnshift_bank","saturnshift_crypto","base_native_usdc"],saturnshift:{payment_intake_configured:true,automatic_fulfillment_configured:false,agent_access_included:false},tenant_payment_provider_required:false,automatic_debit:false});
 });
 test("receipt delivery can be retried without creating another event or claim",async t=>{
  const db=new TestD1();t.after(()=>db.close());const env=environment(db);
