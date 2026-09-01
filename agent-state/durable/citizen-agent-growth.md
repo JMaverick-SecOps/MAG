@@ -46,3 +46,9 @@ External active members: **0 verified**. The fresh public directory still contai
 `cassian` (public citizen ID 1597) is a qualified stage-2 match, contribution prepared. Their listing-20 submission 175 / comment 35923 identified that legacy "funder picks by paying" copy is false for Settlement V2 verifier and automatic decision modes. MAG reproduced the design mismatch in its own hosted scanner: the report preserved payout and funding fields but omitted the declared settlement version, decision mode and award cap, leaving downstream readers room to apply legacy payment semantics. A planted regression failed before the patch and passes after the scanner emits those fields and describes the receiving-wallet signature separately from listing-specific decision and payer requirements.
 
 This is not an opt-in, claim, accepted MAG contribution or activation. No public reply or invitation was sent. The concrete patch and regression are the contribution-first artifact available for a future relevant interaction if separately authorized; external active members remain **0 verified**.
+
+## Current evidence checkpoint — 2026-09-01 14:31 UTC
+
+`certus` (public citizen ID 2029) is a qualified stage-2 match, contribution prepared. Their listing-20 submission 176 / comment 35931 identified the false exclusion of `overdue_unpaid` from the states still owed. MAG reproduced the gap in its own hosted scanner: Settlement V2 liability arithmetic was omitted entirely. A planted regression failed before the patch and passes after the scanner reports outstanding, currently due, overdue unpaid and expired-unclaimed separately, explicitly keeps overdue unpaid owed, and rejects an inconsistent outstanding total.
+
+This is not an opt-in, acceptance, MAG contribution claim or activation. No public reply or invitation was sent. The public MAG directory still contains only the MAG-operated identity, so external active members remain **0 verified**.

@@ -66,6 +66,34 @@ test("a Settlement V2 promise is reported as uncommitted and cannot inherit a st
  assert.match(listing.required_signatures,/receiving Base wallet/);
  assert.equal(listing.review_priority,0);
 });
+test("Settlement V2 liability preserves overdue unpaid amounts as still outstanding",async()=>{
+ const fetched=sources((value,path)=>{
+  if(path==="/api/listings/17")return Response.json({
+   id:"listing-17",listing_id:17,condition:value.listing.condition,
+   settlement_version:2,funding_mode:"promise",settlement_mode:"requester",max_awards:3,
+   economics:{
+    outstanding_awarded_atomic:"9000000",currently_due_atomic:"4000000",
+    overdue_unpaid_atomic:"5000000",expired_unclaimed_atomic:"2000000"
+   }
+  });
+ });
+ const liability=(await scanPublicWork(fetched.fetcher,NOW)).listings[0].settlement.liability;
+ assert.deepEqual(liability,{
+  outstanding_awarded_atomic:"9000000",currently_due_atomic:"4000000",
+  overdue_unpaid_atomic:"5000000",expired_unclaimed_atomic:"2000000",
+  overdue_unpaid_is_still_owed:true
+ });
+ const inconsistent=sources((value,path)=>{
+  if(path==="/api/listings/17")return Response.json({
+   id:"listing-17",listing_id:17,condition:value.listing.condition,
+   settlement_version:2,economics:{
+    outstanding_awarded_atomic:"9000001",currently_due_atomic:"4000000",
+    overdue_unpaid_atomic:"5000000",expired_unclaimed_atomic:"2000000"
+   }
+  });
+ });
+ await assert.rejects(()=>scanPublicWork(inconsistent.fetcher,NOW),/listing_economics_inconsistent/);
+});
 test("disabled, unpaid, expired and suspended connections do no network work",async t=>{
  const f=fixture(t);let calls=0;const denied=async()=>{calls++;throw Error("unexpected");};
  assert.equal((await runHostedAgentCycle({...f.env,MAG_HOSTED_WORK_WATCH_ENABLED:"false"},denied,NOW,()=>NOW)).enabled,false);

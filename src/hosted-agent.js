@@ -23,6 +23,20 @@ async function readSource(path, fetcher) {
  return {url,sha256:await sha256(raw),data:JSON.parse(raw)};
 }
 function atomic(value) { return typeof value==="string" && /^[0-9]{1,30}$/.test(value) ? value : null; }
+function settlementLiability(record,version) {
+ if(version!==2||record.economics==null)return null;
+ const outstanding=atomic(record.economics.outstanding_awarded_atomic);
+ const current=atomic(record.economics.currently_due_atomic);
+ const overdue=atomic(record.economics.overdue_unpaid_atomic);
+ const expired=atomic(record.economics.expired_unclaimed_atomic);
+ if([outstanding,current,overdue,expired].some(value=>value===null))throw new Error("listing_economics_schema_changed");
+ if(BigInt(outstanding)!==BigInt(current)+BigInt(overdue))throw new Error("listing_economics_inconsistent");
+ return {
+  outstanding_awarded_atomic:outstanding,currently_due_atomic:current,
+  overdue_unpaid_atomic:overdue,expired_unclaimed_atomic:expired,
+  overdue_unpaid_is_still_owed:true
+ };
+}
 function score(row, detail, now) {
  const record=detail?.listing || detail;
  // Public detail documents use listing_id; id is an opaque record identifier.
@@ -36,6 +50,7 @@ function score(row, detail, now) {
  const settlementVersion=Number.isSafeInteger(record.settlement_version)&&record.settlement_version>=1?record.settlement_version:null;
  const settlementMode=["automatic","requester","verifier"].includes(record.settlement_mode)?record.settlement_mode:null;
  const maxAwards=Number.isSafeInteger(record.max_awards)&&record.max_awards>=1?record.max_awards:null;
+ const liability=settlementLiability(record,settlementVersion);
  const asset=row.chain_id===8453 && String(row.token).toLowerCase()===USDC;
  const live=Number.isSafeInteger(row.expiry)&&row.expiry>Math.floor(now/1000)&&row.withdrawn_at===null;
  const clarity=condition.trim().length>=40;
@@ -44,7 +59,7 @@ function score(row, detail, now) {
  return {
   id:row.id,title:String(row.title||"").slice(0,160),source:ORIGIN+"/api/listings/"+row.id,
   payout_atomic:reward,funding:{posting_snapshot_atomic:snapshot,declared_mode:fundingMode,current_available:explicitlyUncommitted?"not_committed":"unverified",reserved:false},
-  settlement:{version:settlementVersion,mode:settlementMode,max_awards:maxAwards},
+  settlement:{version:settlementVersion,mode:settlementMode,max_awards:maxAwards,...(liability?{liability}:{})},
   verification_clarity:clarity?"written_condition_present_not_independently_verified":"unclear",
   novelty:"unverified",safety:hazards?"manual_security_review":"not_independently_cleared",
   competition_submissions:submissions,estimated_time:"unknown",
