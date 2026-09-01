@@ -55,9 +55,11 @@ test('transport rejects redirects, excessive responses and every write/signing m
   for(const method of ['eth_sendRawTransaction','eth_sendTransaction','personal_sign','wallet_sendCalls'])await assert.rejects(createPaymentRpc({},()=>{throw Error('must not call');}).request(0,method),/read_only/);
 });
 test('health is metadata only, two witnesses required; wrong chain and outage fail closed',async()=>{
-  const good=async(url,init)=>Response.json({result:JSON.parse(init.body).method==='eth_chainId'?'0x2105':{number:'0x100',hash:'0x'+'c'.repeat(64)}});
-  const health=await paymentRpcHealth(env,good);assert.equal(health.ready,true);assert.equal(health.real_payment,false);assert.ok(!JSON.stringify(health).includes('SYNTHETIC-KEY'));
+  const txHash='0x'+'b'.repeat(64),blockHash='0x'+'c'.repeat(64);
+  const good=async(url,init)=>{const method=JSON.parse(init.body).method;return Response.json({result:method==='eth_chainId'?'0x2105':method==='eth_getBlockByNumber'?{number:'0x100',hash:blockHash,transactions:[txHash]}:method==='eth_getTransactionByHash'?{hash:txHash,blockHash}:method==='eth_getTransactionReceipt'?{transactionHash:txHash,blockHash,blockNumber:'0x100',status:'0x1'}:null});};
+  const health=await paymentRpcHealth(env,good);assert.equal(health.ready,true);assert.equal(health.scope,'chain_finality_and_historical_receipt_reads');assert.ok(health.witnesses.every(w=>w.historical_transaction&&w.historical_receipt));assert.equal(health.real_payment,false);assert.ok(!JSON.stringify(health).includes('SYNTHETIC-KEY'));
   assert.equal((await paymentRpcHealth(env,async(url,init)=>url===env.MAG_BASE_RPC_PRIMARY_URL?Response.json({result:'0x1'}):good(url,init))).ready,false);
+  assert.equal((await paymentRpcHealth(env,async(url,init)=>JSON.parse(init.body).method==='eth_getTransactionReceipt'?Response.json({result:null}):good(url,init))).ready,false);
   assert.equal((await paymentRpcHealth(env,async()=>new Response('',{status:429}))).ready,false);
 });
 test('bound orders, subscriptions, agent-days and legacy transfers use configured witnesses without fallback',async()=>{

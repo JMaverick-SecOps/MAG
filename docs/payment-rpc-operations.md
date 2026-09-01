@@ -7,6 +7,8 @@ Upgrading Workers does not increase an upstream RPC provider's allowance.
 
 For the approved Alchemy/OnFinality pair, `scripts/configure-rpc-secrets.ps1` provides a single hidden-input handoff, including the new read-only chain adapter. See [Alchemy and chains](alchemy-and-chains.md). Neither key belongs in chat, a committed file, a browser-visible MAG field or a command argument.
 
+`scripts/install-rpc-secrets-stdin.mjs` provides the same three-binding update for a trusted local automation that already holds both values in memory. Its JSON stdin must come directly from that trusted process—never a command argument, shell history, source file or log. It suppresses Wrangler response bodies and prints only the names of confirmed bindings.
+
 Set both `MAG_BASE_RPC_PRIMARY_URL` and `MAG_BASE_RPC_SECONDARY_URL` as **Worker secrets** containing account-specific Base mainnet HTTPS endpoints. Do not put credential-bearing URLs in `wrangler.jsonc`, chat, command arguments, logs or browser-visible MAG fields. Use Wrangler's hidden prompt:
 
 ```
@@ -30,7 +32,7 @@ The nonfinancial schema is `0028_payment_rpc_backoff.sql`. Apply only this revie
 
 ## Read-only production diagnostic
 
-`GET /admin/payment-rpc-health` requires the existing owner bearer token. It performs only chain/finality reads and returns operator labels, categorical failures and retry times. It never returns URLs or credentials. Its `ready` field describes **connectivity only**, not receipt matching, checkout acceptance, delivered work or a real payment. The public cannot use it as an RPC proxy.
+`GET /admin/payment-rpc-health` requires the existing owner bearer token. It verifies chain ID, a finalized block, and historical transaction/receipt reads through both configured operators, returning only operator labels, categorical failures and retry times. It never returns URLs or credentials. Its `ready` field describes **read capability only**, not invoice matching, checkout acceptance, delivered work or a real payment. The public cannot use it as an RPC proxy.
 
 Before enabling a disabled product: configure capacity, verify both witnesses from the actual Worker, test historical receipt/transaction methods without sending a payment, and complete the product-specific hosted-delivery checks. No real charge is a test. Existing disabled agent-day and SaturnShift flags are not changed by this transport repair.
 

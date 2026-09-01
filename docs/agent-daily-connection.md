@@ -1,8 +1,10 @@
-# Agent daily connection: runtime repaired, payment capacity blocked
+# Agent daily connection: private two-witness intake enabled
 
-## Current checkpoint — 2026-08-31 19:35 UTC
+## Current checkpoint — 2026-08-31 23:55 UTC
 
-Worker `af110acf-4be8-432e-b497-74f2ef17becd` includes shared, durable two-witness RPC recovery and separate Alchemy development reads for Base, Ethereum and Robinhood. Source `250fff5e1a0c362904a2b3c71ed90e2c936c4933` is pushed; 204 Node tests, 7 Python tests and 53 production smoke checks passed. Alchemy and free OnFinality apps exist, but their rotated credentials still require the hidden local handoff in `scripts/configure-rpc-secrets.ps1`; authenticated production diagnostics report `alchemy_credential_missing`. Both agent-day activation flags remain false. There is no pending Git/database approval. See [release evidence](../ops/2026-08-31-1935-alchemy-chain-infrastructure.md).
+Rotated account-specific Alchemy and OnFinality credentials are stored as encrypted Cloudflare secrets. Production diagnostics require both independent operators to return Base chain 8453, a valid finalized block, and consistent historical transaction plus receipt data before reporting ready. The agent-day and hosted work-watch flags are enabled only after that non-monetary proof passes. This does not claim a real payment, customer delivery, Ethereum/Robinhood checkout, or SaturnShift settlement. There is no pending Git/database approval.
+
+The activation is deployed as Worker version `26c4fdd1-431a-4252-9042-5f6bf97c1b19` (100% traffic). The isolated release passed 204 Node tests, 7 Python tests, a Wrangler production build, 51 nonfinancial production smoke checks, and authenticated two-witness historical-read verification. Production readback remained at zero agent-day invoices, hosted runs and connection notifications immediately after activation; no synthetic production record or test payment was created.
 
 ## Previous checkpoint — 2026-08-31 18:26 UTC
 
@@ -47,7 +49,7 @@ This is a deterministic read-only research recipe, not a general-purpose AI agen
 2. Completed: the reviewed schema was applied to isolated local D1, then exactly migrations 0026 and 0027 were applied to production. Unreviewed 0025_cloud_integrations.sql was excluded. Do not indiscriminately apply that draft later.
 3. Completed for disabled rollout: 186 Node tests, 7 Python tests, actual Worker bundle build, local Workers HTTP checks and 50 production smoke checks passed. Signed API integration tests use synthetic keys and simulated payment witnesses; they are not provider or hosted-production receipts.
 4. Use a provider sandbox or explicitly approved non-monetary test mechanism to observe an actual hosted run and retrieve/hash its artifact. Never invent a paid production invoice or activate a synthetic citizen to obtain this receipt.
-5. Only after that evidence, enable MAG_AGENT_CONNECTIONS_ENABLED and MAG_HOSTED_WORK_WATCH_ENABLED in reviewed configuration and deploy. Both are explicitly false in this release, so no new charge path is enabled. Preserve existing environment and secret values.
+5. Completed for this release: after the isolated hosted-run evidence and live two-witness historical-read verification, MAG_AGENT_CONNECTIONS_ENABLED and MAG_HOSTED_WORK_WATCH_ENABLED were enabled together. Preserve existing environment and encrypted secret values.
 6. Check the deployed manifest, scheduled run/lease/failure records, artifact retrieval, and notification delivery status. A cron configuration or passing local fixture is not this evidence.
 7. Verify the first legitimate incoming payment independently; record its public receipt and actual resulting hosted deliverable. Do not initiate a real charge as a test.
 

@@ -109,11 +109,19 @@ async function paymentRpcHealth(env, fetcher=fetch) {
       if(chain!=='0x2105')throw new PaymentRpcError('wrong_chain');
       const block=await client.request(index,'eth_getBlockByNumber',['finalized',false]);
       if(!/^0x[0-9a-f]+$/i.test(block?.number||'')||!/^0x[0-9a-f]{64}$/i.test(block?.hash||''))throw new PaymentRpcError('invalid_finality');
-      return {...provider,ready:true,finalized_number:block.number,finalized_hash:block.hash};
+      const txHash=(Array.isArray(block.transactions)?block.transactions:[]).find(value=>/^0x[0-9a-f]{64}$/i.test(value||''));
+      if(!txHash)throw new PaymentRpcError('historical_sample_unavailable');
+      const transaction=await client.request(index,'eth_getTransactionByHash',[txHash]);
+      const receipt=await client.request(index,'eth_getTransactionReceipt',[txHash]);
+      if(String(transaction?.hash||'').toLowerCase()!==txHash.toLowerCase()||
+        String(receipt?.transactionHash||'').toLowerCase()!==txHash.toLowerCase()||
+        transaction?.blockHash!==block.hash||receipt?.blockHash!==block.hash||
+        !/^0x[0-9a-f]+$/i.test(receipt?.blockNumber||''))throw new PaymentRpcError('historical_read_invalid');
+      return {...provider,ready:true,finalized_number:block.number,finalized_hash:block.hash,historical_transaction:true,historical_receipt:true};
     }catch(error){return {...provider,ready:false,reason:error.code||'unavailable',retry_at:error.retryAt||null};}
   }));
-  // Connectivity is not a payment receipt or complete checkout acceptance.
-  return {ready:witnesses.every(w=>w.ready),scope:'chain_and_finality_connectivity_only',witnesses,real_payment:false,checked_at:new Date().toISOString()};
+  // Historical read capability is not a real payment or complete checkout acceptance.
+  return {ready:witnesses.every(w=>w.ready),scope:'chain_finality_and_historical_receipt_reads',witnesses,real_payment:false,checked_at:new Date().toISOString()};
 }
 async function collectWitnesses(client, observe) {
   // Drain both observations even on rejection: no orphan work after D1/test
