@@ -52,6 +52,18 @@ test("live detail shape binds listing_id, not its opaque record id",async()=>{
  const substituted=sources((v,p)=>p==="/api/listings/17"?Response.json({id:17,listing_id:18,condition:v.listing.condition}):null);
  await assert.rejects(()=>scanPublicWork(substituted.fetcher,NOW),/schema_changed/);
 });
+test("a Settlement V2 promise is reported as uncommitted and cannot inherit a stale funding snapshot",async()=>{
+ const fetched=sources((value,path)=>{
+  if(path==="/api/listings/17")return Response.json({
+   id:"listing-17",listing_id:17,condition:value.listing.condition,
+   settlement_version:2,funding_mode:"promise",settlement_mode:"requester",max_awards:3
+  });
+ });
+ const listing=(await scanPublicWork(fetched.fetcher,NOW)).listings[0];
+ assert.equal(listing.funding.declared_mode,"promise");
+ assert.equal(listing.funding.current_available,"not_committed");
+ assert.equal(listing.review_priority,0);
+});
 test("disabled, unpaid, expired and suspended connections do no network work",async t=>{
  const f=fixture(t);let calls=0;const denied=async()=>{calls++;throw Error("unexpected");};
  assert.equal((await runHostedAgentCycle({...f.env,MAG_HOSTED_WORK_WATCH_ENABLED:"false"},denied,NOW,()=>NOW)).enabled,false);

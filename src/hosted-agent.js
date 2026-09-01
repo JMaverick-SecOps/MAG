@@ -31,14 +31,16 @@ function score(row, detail, now) {
  const condition=record.condition.slice(0,20000), text=String(row.title||"")+" "+condition;
  const hazards=/private key|seed phrase|install|download and run|credential|transfer funds|lottery|treasury|sign.*transaction/i.test(text);
  const reward=atomic(row.amount_atomic), snapshot=atomic(row.funds_seen_atomic);
+ const fundingMode=typeof record.funding_mode==="string"?record.funding_mode:null;
+ const explicitlyUncommitted=fundingMode==="promise";
  const asset=row.chain_id===8453 && String(row.token).toLowerCase()===USDC;
  const live=Number.isSafeInteger(row.expiry)&&row.expiry>Math.floor(now/1000)&&row.withdrawn_at===null;
  const clarity=condition.trim().length>=40;
- const funded=snapshot!==null && reward!==null && BigInt(snapshot)>=BigInt(reward);
+ const funded=!explicitlyUncommitted && snapshot!==null && reward!==null && BigInt(snapshot)>=BigInt(reward);
  const submissions=Number.isSafeInteger(row.submissions)&&row.submissions>=0?row.submissions:null;
  return {
   id:row.id,title:String(row.title||"").slice(0,160),source:ORIGIN+"/api/listings/"+row.id,
-  payout_atomic:reward,funding:{posting_snapshot_atomic:snapshot,current_available:"unverified",reserved:false},
+  payout_atomic:reward,funding:{posting_snapshot_atomic:snapshot,declared_mode:fundingMode,current_available:explicitlyUncommitted?"not_committed":"unverified",reserved:false},
   verification_clarity:clarity?"written_condition_present_not_independently_verified":"unclear",
   novelty:"unverified",safety:hazards?"manual_security_review":"not_independently_cleared",
   competition_submissions:submissions,estimated_time:"unknown",
