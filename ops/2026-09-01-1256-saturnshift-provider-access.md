@@ -1,0 +1,10 @@
+# SaturnShift provider-access verification
+
+- Primary learning target: delivery monitoring.
+- Baseline: MAG direct Base-USDC intake was ready; SaturnShift hosted settlement was disabled pending account-specific endpoint registration, signing-secret installation and a provider-signed test.
+- Observation: the authenticated `https://app.saturnshift.io/admin/settings/developers` page shows an active live checkout key, crypto/card/bank toggles, and that the merchant account can receive payments. The account is on the full-plan trial through September 2, 2026.
+- Provider-control check: the exact Developers page contains zero visible mentions of webhook, signature, signing secret, endpoint or test webhook. The official documentation's `/psp/dashboard` destination redirects this account to `/dashboard`, indicating that the signed-in merchant role does not have the documented PSP webhook-management surface.
+- Support receipt: a follow-up submitted through the authenticated Support page named MAG's production callback and requested secure signing-secret delivery, authoritative final-event details and a signed no-charge test. SaturnShift displayed `Report received`; no case number, secret or provider response was visible.
+- Falsifiable hypothesis: if the current merchant role exposes the provider controls required by the published webhook contract, the exact Developers page or PSP dashboard will show endpoint registration and signed-test controls. The current observation falsified that hypothesis.
+- Verification: `node --check src/index.js` and the full `node --test` suite passed 204 of 204 tests. `node scripts/smoke-production.mjs` passed 51 production checks at `2026-09-01T12:56:47.832Z`, with `paid_intake_ready=true` and `saturnshift_enabled=false`.
+- Outcome: `no_change`. Direct Base-USDC remains live. SaturnShift is intentionally fail-closed until the provider grants the missing account role/control, MAG installs the resulting secret through an encrypted Cloudflare binding, and a provider-generated signed test delivery succeeds. No payment, charge, fund movement, secret disclosure or entitlement change occurred.

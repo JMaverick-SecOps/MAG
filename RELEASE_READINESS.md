@@ -2,6 +2,14 @@
 
 Current production is version `51d23997-c588-4f61-aafa-41a14359ba76`, application commit `36474273b55d0a46cb2ad1618ae141da5a3d76c4` on `codex/finish-mag-builds`. See [commercial operations](COMMERCIAL_OPERATIONS.md) for current product capabilities and remaining integration work.
 
+### SaturnShift production recheck — September 1, 2026
+
+- The authenticated [merchant Developers page](https://app.saturnshift.io/admin/settings/developers) shows the live checkout public key, crypto/card/bank checkout toggles and an account state that can receive payments. The full-plan trial is active through September 2, 2026.
+- That exact page exposes no webhook endpoint, signing-secret, signature, event-subscription or test-delivery control. The official documentation's PSP dashboard URL redirects this merchant account back to the merchant dashboard, so MAG cannot complete account-specific endpoint registration from the available role.
+- The published [SaturnShift webhook contract](https://docs.saturnshift.io/webhooks) is implemented: exact raw-body HMAC, timestamp skew, payload size, header/payload identity, replay, exact invoice, `payment.paid`, USDC and Base-settlement gates all fail closed. A signed `webhook.test` can prove delivery but cannot credit payment.
+- **204 Node tests passed** and **51 non-monetary production checks passed** at `2026-09-01T12:56:47.832Z`. Direct Base-USDC intake remains ready. SaturnShift hosted settlement remains disabled because no account-specific signing secret or provider-signed test delivery exists; no real payment was initiated.
+- A precise provider-support follow-up was submitted from the authenticated account and the site confirmed **Report received**. It requests registration of MAG's production callback, secure delivery of the account-specific secret and a signed no-charge test. No support response or case number is currently visible.
+
 ## Checkout and subscriptions release — August 27, 2026
 
 - Deployment and final smoke validation completed by **2026-08-28 03:38 UTC** (August 27, 9:38 PM America/Denver).
@@ -18,7 +26,7 @@ Current production is version `51d23997-c588-4f61-aafa-41a14359ba76`, applicatio
 
 ### Still blocked or deliberately unavailable
 
-SaturnShift's public key is provisioned, but its authoritative webhook and registration contract is not verified; **card/ACH checkout remains disabled**. Card/ACH fiat settlement is not automatically USDC. No treasury conversion or reserve spending is implemented.
+SaturnShift's public key and published webhook contract are verified, but the merchant role exposes no endpoint-registration or signing-secret control and no provider-signed test has arrived; **hosted settlement remains disabled**. Card/ACH fiat settlement is not automatically USDC. No treasury conversion or reserve spending is implemented.
 
 Microsoft/Google/Dropbox and verified-TLS IMAP adapter libraries now exist and pass mocked tests. A deployed private connector service, per-customer vault/OAuth provisioning and real test-tenant certification are still required. Migration/security forms hold payment until supported delivery capacity passes preflight. Full-fidelity calendars, contacts, native-document conversion and all provider edge cases are not certified.
 
