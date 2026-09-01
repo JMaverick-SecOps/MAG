@@ -62,6 +62,8 @@ test("a Settlement V2 promise is reported as uncommitted and cannot inherit a st
  const listing=(await scanPublicWork(fetched.fetcher,NOW)).listings[0];
  assert.equal(listing.funding.declared_mode,"promise");
  assert.equal(listing.funding.current_available,"not_committed");
+ assert.deepEqual(listing.settlement,{version:2,mode:"requester",max_awards:3});
+ assert.match(listing.required_signatures,/receiving Base wallet/);
  assert.equal(listing.review_priority,0);
 });
 test("disabled, unpaid, expired and suspended connections do no network work",async t=>{

@@ -33,6 +33,9 @@ function score(row, detail, now) {
  const reward=atomic(row.amount_atomic), snapshot=atomic(row.funds_seen_atomic);
  const fundingMode=typeof record.funding_mode==="string"?record.funding_mode:null;
  const explicitlyUncommitted=fundingMode==="promise";
+ const settlementVersion=Number.isSafeInteger(record.settlement_version)&&record.settlement_version>=1?record.settlement_version:null;
+ const settlementMode=["automatic","requester","verifier"].includes(record.settlement_mode)?record.settlement_mode:null;
+ const maxAwards=Number.isSafeInteger(record.max_awards)&&record.max_awards>=1?record.max_awards:null;
  const asset=row.chain_id===8453 && String(row.token).toLowerCase()===USDC;
  const live=Number.isSafeInteger(row.expiry)&&row.expiry>Math.floor(now/1000)&&row.withdrawn_at===null;
  const clarity=condition.trim().length>=40;
@@ -41,10 +44,11 @@ function score(row, detail, now) {
  return {
   id:row.id,title:String(row.title||"").slice(0,160),source:ORIGIN+"/api/listings/"+row.id,
   payout_atomic:reward,funding:{posting_snapshot_atomic:snapshot,declared_mode:fundingMode,current_available:explicitlyUncommitted?"not_committed":"unverified",reserved:false},
+  settlement:{version:settlementVersion,mode:settlementMode,max_awards:maxAwards},
   verification_clarity:clarity?"written_condition_present_not_independently_verified":"unclear",
   novelty:"unverified",safety:hazards?"manual_security_review":"not_independently_cleared",
   competition_submissions:submissions,estimated_time:"unknown",
-  required_signatures:"Active citizen Ed25519 and owner-controlled payout-wallet signature; inspect exact listing for additional receipts.",
+  required_signatures:"Active self-custodied citizen Ed25519 plus EIP-191 signature from the receiving Base wallet; settlement decision and payer requirements remain listing-specific.",
   review_priority:(!hazards&&asset&&live&&clarity&&funded)?Math.max(0,50-Math.min(50,submissions||0)):0,
   disposition:hazards?"hold_security_review":!asset||!live?"exclude":"review_only",
   condition_sha256:null,condition // Untrusted source text; JSON data, never HTML or instructions.

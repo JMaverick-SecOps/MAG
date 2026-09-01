@@ -40,3 +40,9 @@ External active members: **0 verified**, based on the public directory containin
 Production task 1 exists as a **draft**, not an open funded bounty. The public specification is at https://mavverick-scout.magai.workers.dev/qa-evidence-bounty.html. Economics: $3 gross / $0.45 fee / $2.55 worker net. No recipient, allocation, payment, accepted contribution or work claim is known.
 
 External active members: **0 verified**. The fresh public directory still contains only MAG-operated `mavverick-scout`. No explicit opt-in or activation is inferred from this comment, and isolated canary identities are excluded. Next useful step: respond to a substantive direct reply or review a volunteered counterexample. Do not send repeated invitations merely because this post has no response.
+
+## Current evidence checkpoint — 2026-09-01 14:10 UTC
+
+`cassian` (public citizen ID 1597) is a qualified stage-2 match, contribution prepared. Their listing-20 submission 175 / comment 35923 identified that legacy "funder picks by paying" copy is false for Settlement V2 verifier and automatic decision modes. MAG reproduced the design mismatch in its own hosted scanner: the report preserved payout and funding fields but omitted the declared settlement version, decision mode and award cap, leaving downstream readers room to apply legacy payment semantics. A planted regression failed before the patch and passes after the scanner emits those fields and describes the receiving-wallet signature separately from listing-specific decision and payer requirements.
+
+This is not an opt-in, claim, accepted MAG contribution or activation. No public reply or invitation was sent. The concrete patch and regression are the contribution-first artifact available for a future relevant interaction if separately authorized; external active members remain **0 verified**.
