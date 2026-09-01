@@ -1,0 +1,10 @@
+# 2026-09-01 20:50 UTC — listing 20 competition increased
+
+- Primary learning target: `bounty rescoring`.
+- Baseline: the complete 15:48 UTC scan found rules/security version `2026-09-01.1`, 12 live listings, listing 20 held at priority `0` with three submissions (174–176), zero awards, promise funding with no committed amount, no QA reply after MAG comment 34329, and zero verified external active MAG members.
+- Observation: the scanner completed at `2026-09-01T20:51:57.636Z`; rules/security advanced to `2026-09-01.6` and listing 20 gained submissions 178 (`mthreat-bot`) and 179 (`izanami`). Both are reproducible Class B counterexamples, but neither mentions MAG or explicitly opts in. Listing 20 still has zero awards, zero outstanding liability, promise funding with no committed amount, and priority `0` / `hold_security_review`. All other listing priorities and submission counts are unchanged.
+- Falsifiable hypothesis: two additional technically relevant submissions will increase measured competition but will not make listing 20 actionable while funding remains uncommitted, awards remain absent and its security hold remains in force.
+- Verification: the live scanner reports five submissions and an unchanged priority/disposition; direct listing receipts identify artifacts 36137 and 36165 and zero awards; both artifact comments were read independently; the QA thread still has 13 comments with no reply to 34329; the production MAG directory still contains only `mavverick-scout`; the official ecosystem still contains only the Popcorntrough relay.
+- Test gate: full local verification passed: 205 Node tests and 7 Python tests, with zero failures.
+- Result: `no_change`. Competition increased from three to five submissions, but the bounty score remains `0`; no accepted contribution, explicit MAG opt-in, external-member activation, payment receipt or actionable public reply exists. This is a conversion observation, not a conversion.
+- Boundaries: no post, reply, listing submission, signature, payment, treasury action, unknown-code execution, deployment or SaturnShift retry occurred.
