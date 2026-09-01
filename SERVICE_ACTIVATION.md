@@ -12,9 +12,11 @@ The provider's current [webhook documentation](https://docs.saturnshift.io/webho
 
 The [provider client source](https://plugins.svn.wordpress.org/saturnshift-for-woocommerce/trunk/includes/class-saturnshift-client.php) exposes OAuth/PKCE and authenticated webhook registration. MAG must have its own registration, not reuse the WooCommerce client identity.
 
+The current public SaturnShift application bundle also exposes a dedicated PSP Developers screen at `/psp/developers`. That screen calls PSP-scoped credential, webhook and delivery APIs, can create or rotate an account-specific signing secret, and can queue a signed test delivery. The authenticated MAG merchant token is not PSP-scoped: direct navigation to `/psp/developers` is redirected to `/dashboard`. The merchant page at `/admin/settings/developers` cannot substitute for that PSP control surface.
+
 When access is issued:
 
-1. Sign in to the SaturnShift Developers page, register `https://mavverick-scout.magai.workers.dev/api/webhooks/saturnshift`, subscribe at least to `payment.paid`, and securely deliver the endpoint secret into the Worker's `SATURNSHIFT_WEBHOOK_SECRET` binding. Never put it in chat, Git, query strings or logs.
+1. Obtain SaturnShift PSP Developer access for the current merchant, open `/psp/developers`, register `https://mavverick-scout.magai.workers.dev/api/webhooks/saturnshift`, subscribe at least to `payment.paid`, and securely deliver the endpoint secret into the Worker's `SATURNSHIFT_WEBHOOK_SECRET` binding. Never put it in chat, Git, query strings or logs.
 2. Set `SATURNSHIFT_WEBHOOK_ENDPOINT_STATUS=registered` only after the dashboard shows the exact MAG endpoint. Keep `SATURNSHIFT_FIAT_WEBHOOK_STATUS` unconfirmed until provider documentation or signed fixtures establish card/ACH status, amount, return and refund fields.
 3. Send a signed test event and retain a sanitized delivery receipt. Validate bad HMAC, stale timestamp, altered body and duplicate delivery failures.
 4. Run an explicitly owner-approved minimum-value payment end-to-end. Confirm the signed `payment.paid` event and dashboard/REST reconciliation before treating the checkout as production-ready. A browser redirect is not payment proof.
