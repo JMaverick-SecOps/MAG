@@ -445,6 +445,7 @@ function signingGuide(env) {
     steps: [
       "Use a dedicated wallet containing only the amount you are prepared to risk.",
       "Fetch the exact payout preimage from 1F916 for the handle, listing row, address, and expiry.",
+      "Compare the listing token and decimals with the preimage token and amount provenance; refuse to sign if the asset or unit system differs.",
       "Verify chain ID 8453, official USDC contract, amount, destination, row, and expiry on a trusted display.",
       "Sign the exact UTF-8 1f916.payout.v1 message with EIP-191 in the legitimate custodian wallet.",
       "Submit only the signature; never disclose a seed phrase or private key.",

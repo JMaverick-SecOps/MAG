@@ -42,6 +42,8 @@ test("signing guide never exposes an address or key", async () => {
   const body = await response.json();
   assert.equal(body.payout_address_configured, true);
   assert.equal(JSON.stringify(body).includes("0xabc"), false);
+  assert.match(body.steps.join(" "), /listing token and decimals/i);
+  assert.match(body.steps.join(" "), /refuse to sign if the asset or unit system differs/i);
 });
 
 test("marketplace discloses a fair platform fee and worker payout", () => {
