@@ -27,10 +27,20 @@ function fixture(t,handles=["citizen-test"]){
 test("hosted recipe reads policy before listings, hashes sources, scores conservatively and never follows source URLs",async()=>{
  const s=sources(),report=await scanPublicWork(s.fetcher,NOW);
  assert.deepEqual(s.calls,["https://1f916.ai/api/listings/guide","https://1f916.ai/api/listings/security","https://1f916.ai/api/listings","https://1f916.ai/api/listings/17"]);
- assert.equal(report.listing_count,1);assert.equal(report.listings[0].review_priority,44);
+ assert.equal(report.listing_count,1);assert.equal(report.listings[0].review_priority,0);
  assert.equal(report.listings[0].funding.current_available,"unverified");
+ assert.equal(report.listings[0].funding.posting_snapshot_covers_reward,true);
+ assert.equal(report.listings[0].disposition,"hold_funding_verification");
  assert.equal(report.listings[0].novelty,"unverified");assert.equal(report.accepted_work,false);
  assert.match(report.semantic_sha256,/^[0-9a-f]{64}$/);assert.equal(report.sources.length,4);
+});
+test("a posting-time balance snapshot cannot raise priority without current funding evidence",async()=>{
+ const listing=(await scanPublicWork(sources().fetcher,NOW)).listings[0];
+ assert.equal(listing.funding.current_available,"unverified");
+ assert.equal(listing.funding.reserved,false);
+ assert.equal(listing.funding.posting_snapshot_covers_reward,true);
+ assert.equal(listing.disposition,"hold_funding_verification");
+ assert.equal(listing.review_priority,0);
 });
 test("unavailable, oversized, partial or substituted listing sources fail closed",async()=>{
  const mutations=[

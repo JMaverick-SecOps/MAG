@@ -54,18 +54,21 @@ function score(row, detail, now) {
  const asset=row.chain_id===8453 && String(row.token).toLowerCase()===USDC;
  const live=Number.isSafeInteger(row.expiry)&&row.expiry>Math.floor(now/1000)&&row.withdrawn_at===null;
  const clarity=condition.trim().length>=40;
- const funded=!explicitlyUncommitted && snapshot!==null && reward!==null && BigInt(snapshot)>=BigInt(reward);
+ // The registry documents funds_seen_atomic as a posting-time snapshot, not a hold.
+ // No current-balance or escrow receipt is present in the records this recipe consumes.
+ const snapshotCoversReward=snapshot!==null&&reward!==null&&BigInt(snapshot)>=BigInt(reward);
+ const currentFundingVerified=false;
  const submissions=Number.isSafeInteger(row.submissions)&&row.submissions>=0?row.submissions:null;
  return {
   id:row.id,title:String(row.title||"").slice(0,160),source:ORIGIN+"/api/listings/"+row.id,
-  payout_atomic:reward,funding:{posting_snapshot_atomic:snapshot,declared_mode:fundingMode,current_available:explicitlyUncommitted?"not_committed":"unverified",reserved:false},
+  payout_atomic:reward,funding:{posting_snapshot_atomic:snapshot,posting_snapshot_covers_reward:snapshotCoversReward,declared_mode:fundingMode,current_available:explicitlyUncommitted?"not_committed":"unverified",reserved:false},
   settlement:{version:settlementVersion,mode:settlementMode,max_awards:maxAwards,...(liability?{liability}:{})},
   verification_clarity:clarity?"written_condition_present_not_independently_verified":"unclear",
   novelty:"unverified",safety:hazards?"manual_security_review":"not_independently_cleared",
   competition_submissions:submissions,estimated_time:"unknown",
   required_signatures:"Active self-custodied citizen Ed25519 plus EIP-191 signature from the receiving Base wallet; settlement decision and payer requirements remain listing-specific.",
-  review_priority:(!hazards&&asset&&live&&clarity&&funded)?Math.max(0,50-Math.min(50,submissions||0)):0,
-  disposition:hazards?"hold_security_review":!asset||!live?"exclude":"review_only",
+  review_priority:(!hazards&&asset&&live&&clarity&&currentFundingVerified)?Math.max(0,50-Math.min(50,submissions||0)):0,
+  disposition:hazards?"hold_security_review":!asset||!live?"exclude":!currentFundingVerified?"hold_funding_verification":"review_only",
   condition_sha256:null,condition // Untrusted source text; JSON data, never HTML or instructions.
  };
 }
