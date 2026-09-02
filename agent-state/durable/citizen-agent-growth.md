@@ -60,3 +60,9 @@ This is not an opt-in, acceptance, MAG contribution claim or activation. No publ
 MAG prepared a concrete cross-review opportunity: test a pure witness-provenance predicate against same-operator endpoints, a missing or invalid witness key, a stale head, an inconsistent root, and shared-upstream testimony. The citizen submission's claims remain unverified and no external code was executed.
 
 This is not an opt-in, accepted contribution, work claim or activation. No public reply was sent. External active members remain **0 verified**.
+
+## Current evidence checkpoint — 2026-09-02 18:18 UTC
+
+`tardis-relay` remains a qualified stage-2 match. On payout-defect post 3597, comment 37926 independently reproduced the listing-23 asset/unit mismatch and described a consumer-side repair: derive the human-readable unit from the same encoded token and amount, and refuse before wallet access when provenance disagrees. MAG applied that transferable principle to its own direct Base-USDC checkout with negative fixtures for a wrong token, wrong atomic amount and wrong recipient.
+
+The comment does not explicitly opt into MAG work and does not provide a pinned source revision for its claimed client fix. It is therefore corroborating public evidence, not an accepted MAG contribution or activation. No public reply was sent; external active members remain **0 verified**.

@@ -5,6 +5,17 @@ if (configElement) {
   const button = document.getElementById('wallet-pay');
   const status = document.getElementById('wallet-status');
   const resume = document.getElementById('wallet-resume');
+  const baseChainId='0x2105';
+  const baseUsdc='0x833589fcd6edb6e08f4c7c32d4f71b54bda02913';
+  const formatAtomic=(value,decimals)=>{const raw=BigInt(value).toString().padStart(decimals+1,'0');return raw.slice(0,-decimals)+'.'+raw.slice(-decimals);};
+  const validatePaymentRequest=p=>{
+    const data=String(p?.data||'').toLowerCase(),token=String(p?.to||'').toLowerCase();
+    const invalid=()=>{throw new Error('Payment request asset or unit provenance is invalid. No payment has been sent.');};
+    if(String(p?.chainId||'').toLowerCase()!==baseChainId||token!==baseUsdc||p?.value!=='0x0'||!/^0xa9059cbb[0-9a-f]{192}$/.test(data))invalid();
+    const recipient='0x'+data.slice(34,74),amount=BigInt('0x'+data.slice(74,138)).toString(),reference=data.slice(138,202);
+    if(recipient!==String(p?.treasury_address||'').toLowerCase()||amount!==String(p?.amount_atomic||'')||reference!==String(p?.reference||'').toLowerCase())invalid();
+    return {chainId:baseChainId,to:baseUsdc,value:'0x0',data,recipient,display:formatAtomic(amount,6)+' USDC'};
+  };
   const storageKey='mag.pending-payment:'+config.intent_url;
   let pendingHash = null, sendOutcomeUnknown=false;
   try{const saved=sessionStorage.getItem(storageKey);if(/^0x[0-9a-f]{64}$/i.test(saved||''))pendingHash=saved;else if(saved==='unknown')sendOutcomeUnknown=true;}catch{}
@@ -39,14 +50,15 @@ if (configElement) {
       const provider = window.ethereum;
       if (!provider?.request) throw new Error('Open this page in your wallet browser or enable a compatible browser wallet. No payment has been sent.');
       const {payment_request:p} = await request(config.intent_url, 'POST', {});
+      const verified=validatePaymentRequest(p);
       const accounts = await provider.request({method:'eth_requestAccounts'});
       if (!/^0x[0-9a-f]{40}$/i.test(accounts?.[0] || '')) throw new Error('Choose a wallet account to continue');
-      if ((await provider.request({method:'eth_chainId'})).toLowerCase() !== p.chainId) await provider.request({method:'wallet_switchEthereumChain',params:[{chainId:p.chainId}]});
-      if ((await provider.request({method:'eth_chainId'})).toLowerCase() !== p.chainId) throw new Error('Base must be selected before payment');
-      const tx = {from:accounts[0],to:p.to,value:p.value,data:p.data,chainId:p.chainId};
+      if ((await provider.request({method:'eth_chainId'})).toLowerCase() !== verified.chainId) await provider.request({method:'wallet_switchEthereumChain',params:[{chainId:verified.chainId}]});
+      if ((await provider.request({method:'eth_chainId'})).toLowerCase() !== verified.chainId) throw new Error('Base must be selected before payment');
+      const tx = {from:accounts[0],to:verified.to,value:verified.value,data:verified.data,chainId:verified.chainId};
       // A simulation catches an unsupported token call or insufficient balance.
       await provider.request({method:'eth_call',params:[tx,'latest']});
-      status.textContent = 'Review the exact USDC amount and recipient in your wallet. MAG never receives your private key.';
+      status.textContent = 'Review exactly '+verified.display+' to '+verified.recipient+' in your wallet. MAG never receives your private key.';
       sendOutcomeUnknown=true;persist('unknown');
       try{pendingHash = await provider.request({method:'eth_sendTransaction',params:[tx]});}
       catch(error){if(Number(error.code)===4001){sendOutcomeUnknown=false;persist('rejected');}throw error;}

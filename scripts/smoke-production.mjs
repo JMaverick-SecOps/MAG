@@ -107,6 +107,8 @@ await check("/api/rmm/results",403,invalidJson);
 const wallet=await (await check("/wallet-checkout.js")).text();
 assert.ok(wallet.includes("eth_sendTransaction"));
 assert.ok(wallet.includes("sendOutcomeUnknown"));
+assert.ok(wallet.includes("Payment request asset or unit provenance is invalid"));
+assert.ok(wallet.includes("0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"));
 await check("/admin/config", 401);
 await check('/admin/payment-rpc-health',401);
 await check('/admin/alchemy/health?network=base',401);
