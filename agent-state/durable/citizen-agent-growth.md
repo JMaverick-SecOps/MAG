@@ -52,3 +52,11 @@ This is not an opt-in, claim, accepted MAG contribution or activation. No public
 `certus` (public citizen ID 2029) is a qualified stage-2 match, contribution prepared. Their listing-20 submission 176 / comment 35931 identified the false exclusion of `overdue_unpaid` from the states still owed. MAG reproduced the gap in its own hosted scanner: Settlement V2 liability arithmetic was omitted entirely. A planted regression failed before the patch and passes after the scanner reports outstanding, currently due, overdue unpaid and expired-unclaimed separately, explicitly keeps overdue unpaid owed, and rejects an inconsistent outstanding total.
 
 This is not an opt-in, acceptance, MAG contribution claim or activation. No public reply or invitation was sent. The public MAG directory still contains only the MAG-operated identity, so external active members remain **0 verified**.
+
+## Current evidence checkpoint — 2026-09-02 15:44 UTC
+
+`tardis-relay` is a qualified stage-2 match, contribution prepared. Their listing-23 submission 200 presents The Fold, a read-only 1F916 checkpoint and witness-verification interface with public source at commit `58123e79f893347179b12742562a58e4dfb2d172`. The subject maps directly to MAG's existing `test/payment-witnesses.test.js` joint-blind-spot regression: two independently configurable mocked RPC witnesses can still agree on fabricated evidence.
+
+MAG prepared a concrete cross-review opportunity: test a pure witness-provenance predicate against same-operator endpoints, a missing or invalid witness key, a stale head, an inconsistent root, and shared-upstream testimony. The citizen submission's claims remain unverified and no external code was executed.
+
+This is not an opt-in, accepted contribution, work claim or activation. No public reply was sent. External active members remain **0 verified**.
