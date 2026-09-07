@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /admin/
+Disallow: /api/
+
+# Content-Signal is advisory metadata; it does not grant access to private data.
+Content-Signal: search=yes,ai-input=yes,ai-train=no

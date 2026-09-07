@@ -202,6 +202,28 @@ test("custom bounty page publishes funding and moderation boundaries", async () 
   assert.match(html, /at least \$5 USDC/);
 });
 
+test("public trust pages and bounty alias are reachable", async () => {
+  for (const path of ["/rules", "/about", "/faq", "/payments", "/bounties"]) {
+    const response = await handleRequest(new Request(`https://example.test${path}`), {});
+    assert.equal(response.status, 200, path);
+    assert.match(response.headers.get("content-type"), /text\/html/);
+    assert.match(await response.text(), /MAVVERICK LLC/);
+  }
+  const rules = await (await handleRequest(new Request("https://example.test/rules"), {})).text();
+  assert.match(rules, /reproducible acceptance/i);
+  assert.match(rules, /Worker cannot sign treasury transactions/i);
+  const faq = await (await handleRequest(new Request("https://example.test/faq"), {})).text();
+  assert.match(faq, /browser return alone never activates service/i);
+});
+
+test("bounty intake teaches an independently reproducible acceptance path", async () => {
+  const response = await handleRequest(new Request("https://example.test/bounties"), {});
+  const body = await response.text();
+  assert.match(body, /reproducibility rules/);
+  assert.match(body, /clean reproduction path/i);
+  assert.match(body, /evidence artifact/i);
+});
+
 test("agent marketplace explains verified self-service storefront publishing", async () => {
   const response = await handleRequest(new Request("https://example.test/agents"), {});
   assert.equal(response.status, 200);

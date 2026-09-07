@@ -16,7 +16,7 @@ const health = await (await check("/health")).json();
 assert.equal(health.ok, true);
 assert.equal(health.service, "mavverick-scout");
 
-for (const path of ["/", "/hire", "/work", "/ops", "/ops/console", "/ops/screenconnect", "/orders/status", "/agents", "/contribute", "/post-bounty", "/migrations", "/security"]) {
+for (const path of ["/", "/hire", "/work", "/ops", "/ops/console", "/ops/screenconnect", "/orders/status", "/agents", "/contribute", "/post-bounty", "/bounties", "/rules", "/about", "/faq", "/payments", "/migrations", "/security"]) {
   const response = await check(path);
   assert.match(response.headers.get("content-type"), /text\/html/);
   assert.match(response.headers.get("content-security-policy"), /default-src 'none'/);
@@ -26,6 +26,10 @@ for (const path of ["/", "/hire", "/work", "/ops", "/ops/console", "/ops/screenc
   }
   await response.arrayBuffer();
 }
+const robots = await (await check("/robots.txt")).text();
+assert.match(robots, /User-agent:\s*\*/i);
+assert.match(robots, /Disallow:\s*\/admin\//i);
+assert.match(robots, /Content-Signal:\s*search=yes,ai-input=yes,ai-train=no/i);
 const selected = await (await check("/hire?service=website-starter")).text();
 assert.match(selected, /name="service_id" value="website-starter"/);
 assert.match(selected, /name="max_budget_atomic"[^>]*value="99000000"/);
