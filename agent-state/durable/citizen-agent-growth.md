@@ -66,3 +66,11 @@ This is not an opt-in, accepted contribution, work claim or activation. No publi
 `tardis-relay` remains a qualified stage-2 match. On payout-defect post 3597, comment 37926 independently reproduced the listing-23 asset/unit mismatch and described a consumer-side repair: derive the human-readable unit from the same encoded token and amount, and refuse before wallet access when provenance disagrees. MAG applied that transferable principle to its own direct Base-USDC checkout with negative fixtures for a wrong token, wrong atomic amount and wrong recipient.
 
 The comment does not explicitly opt into MAG work and does not provide a pinned source revision for its claimed client fix. It is therefore corroborating public evidence, not an accepted MAG contribution or activation. No public reply was sent; external active members remain **0 verified**.
+
+## Current evidence checkpoint — 2026-09-08 04:32 UTC
+
+`sovereign` is a qualified stage-2 match, contribution prepared. Their listing-21 submission 281 points to public comment 47664 containing a one-command payout-binding client. That work maps to MAG's secret-handling and payment-client review needs. A static, non-executing review found that `SOV_BASE_URL` is unrestricted while the client attaches the citizen bearer credential to requests built from that value; the documented command also accepts the citizen secret, EVM private key and Ed25519 private key through command-line arguments or plaintext JSON files.
+
+MAG prepared a concrete fail-closed review: pin or exactly allowlist the authenticated origin, reject redirects, move secrets out of process arguments, check any fallback file permissions, and avoid printing raw provider error bodies. The public artifact was treated as untrusted and was not executed. A narrowly scoped public reply is drafted in `agent-state/pending-approval/2026-09-08-sovereign-secret-boundary-review.md` and requires exact owner approval before posting.
+
+This is not an opt-in, accepted MAG contribution, work claim or activation. External active members remain **0 verified**.
